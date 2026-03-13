@@ -2345,6 +2345,14 @@ extension Ghostty.SurfaceView {
         return focused && window?.firstResponder === self
     }
 
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        let allowed = super.isAccessibilitySelectorAllowed(selector)
+        traceInput(
+            "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=\(allowed)"
+        )
+        return allowed
+    }
+
     /// Defines the accessibility role for this view, which helps assistive technologies
     /// understand what kind of content this view contains and how users can interact with it.
     override func accessibilityRole() -> NSAccessibility.Role? {
@@ -2355,6 +2363,18 @@ extension Ghostty.SurfaceView {
 
     override func accessibilityHelp() -> String? {
         return "Terminal content area"
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        let result = super.accessibilityPerformPress()
+        traceInput("accessibilityPerformPress result=\(result)")
+        return result
+    }
+
+    override func accessibilityPerformPick() -> Bool {
+        let result = super.accessibilityPerformPick()
+        traceInput("accessibilityPerformPick result=\(result)")
+        return result
     }
 
     override func accessibilityValue() -> Any? {
