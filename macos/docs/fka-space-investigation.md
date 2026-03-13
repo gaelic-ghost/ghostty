@@ -36,6 +36,8 @@ Relevant characteristics:
 - it accepts first responder and implements its own keyboard handling
 - it also implements `NSTextInputClient`
 - it exposes accessibility as a single `.textArea`
+- it does not appear to adopt the newer system text cursor path with
+  `NSTextInsertionIndicator`
 
 Accessibility Inspector confirmed that the visible terminal content is exposed as one
 `AXTextArea` with no meaningful child text structure underneath it.
@@ -117,7 +119,23 @@ This mismatch is now one of the strongest clues in the investigation. It suggest
 externally exposed accessibility contract is not the same as the one Ghostty believes it
 is presenting in-process.
 
-### 6. Accessibility contract repairs improved semantics, but not the core fallback
+### 6. Ghostty is on the custom `NSView + NSTextInputClient` path
+
+Apple documents two normal ways to build a text-editing view in AppKit:
+
+- subclass `NSTextView`
+- subclass `NSView` and implement `NSTextInputClient`
+
+Ghostty is clearly using the second path. `SurfaceView` is a custom `NSView` subclass that
+implements `NSTextInputClient`, but current investigation suggests it still does not meet
+enough of the broader AppKit text-input and accessibility expectations for a trustworthy
+editable text target.
+
+This matters because it narrows the next phase of work. The most valuable next step is no
+longer more event tracing; it is a gap audit against Apple's custom `NSTextInputClient`
+expectations for text input, placement, visibility, and accessibility.
+
+### 7. Accessibility contract repairs improved semantics, but not the core fallback
 
 The following repairs were added to the terminal surface:
 
@@ -130,7 +148,7 @@ The following repairs were added to the terminal surface:
 These changes make the surface more truthful as an editable text target, but they did not
 eliminate the synthetic activation fallback.
 
-### 7. The focused surface originally reported itself as not accessibility-enabled
+### 8. The focused surface originally reported itself as not accessibility-enabled
 
 One diagnostic probe showed that AppKit asked the focused terminal surface for
 `isAccessibilityEnabled()`, and Ghostty answered `false` through the inherited default
@@ -144,7 +162,7 @@ Temporarily forcing `isAccessibilityEnabled()` to return `true` for the focused 
 surface changed the reported state as expected, but it still did **not** stop the
 synthetic center-click fallback. So this was a real semantic mismatch, but not the whole bug.
 
-### 8. Changing the focused role from `AXTextArea` to `AXGroup` did not stop fallback
+### 9. Changing the focused role from `AXTextArea` to `AXGroup` did not stop fallback
 
 As another diagnostic probe, the focused terminal surface was temporarily exposed as
 `AXGroup` instead of `AXTextArea` while Full Keyboard Access was active.
@@ -156,7 +174,7 @@ This also failed to change the core bad behavior:
 
 So the role label by itself does not appear to be the trigger.
 
-### 9. The accessibility hierarchy is flat: zero children, scroll view parent
+### 10. The accessibility hierarchy is flat: zero children, scroll view parent
 
 Hierarchy probing showed that, during the failing Full Keyboard Access path:
 
@@ -167,7 +185,7 @@ This is one of the strongest remaining signals in the investigation. The termina
 is still being exposed as one opaque focused element with no inner editable child target
 for the live prompt or insertion point.
 
-### 10. Ghostty's local left-mouse focus monitor is not consuming the failing path
+### 11. Ghostty's local left-mouse focus monitor is not consuming the failing path
 
 Ghostty installs a local monitor on the terminal surface for `leftMouseDown` so it can
 perform focus-transfer logic before normal event dispatch.
@@ -201,6 +219,9 @@ have been using.
 - This is not primarily caused by the surface's local left-mouse focus-transfer monitor in
   the current repro path, because that monitor passes the synthetic clicks through when the
   surface is already first responder.
+- This is probably not just a missing `accessibilityPerformPress` or missing custom-actions
+  issue by itself; text inputs do not inherently need button-like actions to behave as text
+  inputs.
 
 ## What Still Looks Likely
 
@@ -218,6 +239,8 @@ More concretely, the strongest remaining suspects are now:
 - missing or insufficient focused-child / shared-focus topology for the live text target
 - an externally exposed accessibility object that diverges from Ghostty's in-process role,
   enabled, or focused state
+- missing parts of Apple's expected custom `NSTextInputClient` integration surface, such as
+  placement, visibility, and insertion-indicator support
 - AppKit accessibility fallback behavior that occurs before Ghostty's normal view-level input path
 
 ## Notes On Architecture
@@ -256,46 +279,40 @@ Recent branch checkpoints on `fix/fka`:
 - `38f6494cb` Trace app-level event monitor dispatch
 - `9ea5f9246` Trace app accessibility focus targets
 - `a9b1007d3` Probe AX text field role under FKA
+- `7021ef1a1` Log focused AX state at app layer
 
 ## Recommended Next Steps
 
-### 1. Document the live repro sequence cleanly
+### 1. Freeze the tracing phase and begin a gap audit
 
-Capture one short canonical live trace that shows:
+We have enough event-path evidence to stop broad tracing for now. The next pass should be a
+targeted gap audit of `SurfaceView` against Apple's custom `NSView + NSTextInputClient`
+expectations, with special attention to:
 
-- selector polling
+- text input placement and visibility APIs
+- insertion point / selected range semantics
+- system text cursor integration
+- focus and accessibility structure for the live editable target
+
+See `docs/fka-text-input-gap-audit.md`.
+
+### 2. Keep one canonical live repro trace for reference
+
+Keep one short canonical live trace that shows:
+
+- in-process focused AX state
 - denied press/pick actions
 - synthetic mouse events
 - absence of keyboard text-input callbacks
 
-This should be kept as a minimal evidence block for future debugging.
+This is enough evidence for future debugging without carrying all of the current tracing
+noise forever.
 
-### 2. Compare in-process focused AX state against the externally exposed contract
+### 3. Compare in-process focused AX state against the externally exposed contract
 
-The next high-signal probe is to log the properties of
-`NSApp.accessibilityApplicationFocusedUIElement()` directly at the app layer:
-
-- role
-- enabled state
-- focused state
-- parent type
-- child count
-
-That should tell us whether Ghostty's own focused element says `AXTextField` / enabled /
-focused at the same moment Accessibility Inspector still sees `AXTextArea` / disabled /
-unfocused.
-
-### 3. Probe focus semantics and hierarchy more deeply
-
-The next most useful instrumentation target is the focus and hierarchy contract rather
-than another action method. In particular:
-
-- `setAccessibilityFocused:`
-- shared-focus behavior
-- whether the window or container hierarchy is exposing the terminal surface as a generic
-  activatable focus area instead of an editable text target
-- whether Ghostty needs an explicit inner accessibility child for the live prompt /
-  insertion point rather than one flat surface with zero children
+We now have useful app-layer logs for the in-process focused accessibility object. The next
+analysis pass should compare those findings against external Accessibility Inspector output
+and identify which properties are likely being surfaced inconsistently.
 
 ### 4. Evaluate whether the exposed accessibility role is still too broad
 
@@ -308,16 +325,25 @@ Warning: adding a new accessibility layer or splitting the terminal into multipl
 elements may be unnecessary and is exactly the kind of change that can make this codebase
 more brittle. Any such change needs extra review before and after implementation.
 
-### 5. Probe app-level dispatch or pre-window accessibility behavior
-
-Because the synthetic clicks are already visible in `NSWindow.sendEvent(_:)`, the next
-higher-value dispatch probe is likely:
-
-- `NSApplication.sendEvent(_:)`, if practical
-- or other app-level / accessibility-focused entry points above the terminal window
-
-### 6. Keep terminal-launched live tracing as the primary repro path
+### 5. Keep terminal-launched live tracing as the primary repro path
 
 Running the built app directly from the terminal has been more useful than relying on Xcode's
 debug console panes for this investigation. Continue using the terminal-launched app while
 probing this bug.
+
+## Apple References
+
+- `NSTextInputClient`:
+  <https://developer.apple.com/documentation/appkit/nstextinputclient>
+- `NSTextInputClient` placing content:
+  <https://developer.apple.com/documentation/appkit/nstextinputclient#Placing-content>
+- `Adopting the system text cursor in custom text views`:
+  <https://developer.apple.com/documentation/appkit/adopting-the-system-text-cursor-in-custom-text-views>
+- `NSTextInsertionIndicator`:
+  <https://developer.apple.com/documentation/appkit/nstextinsertionindicator>
+- `Custom Controls`:
+  <https://developer.apple.com/documentation/appkit/custom-controls>
+- `NSAccessibilityProtocol`:
+  <https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol>
+- `Inspecting the accessibility of screens`:
+  <https://developer.apple.com/documentation/accessibility/inspecting-the-accessibility-of-screens>
