@@ -2345,6 +2345,19 @@ extension Ghostty.SurfaceView {
         return focused && window?.firstResponder === self
     }
 
+    override func setAccessibilityFocused(_ accessibilityFocused: Bool) {
+        traceInput(
+            "setAccessibilityFocused requested=\(accessibilityFocused) currentlyFocused=\(focused) windowFirstResponderMatches=\(window?.firstResponder === self)"
+        )
+        super.setAccessibilityFocused(accessibilityFocused)
+    }
+
+    override func accessibilitySharedFocusElements() -> [Any]? {
+        let shared = super.accessibilitySharedFocusElements()
+        traceInput("accessibilitySharedFocusElements count=\(shared?.count ?? 0)")
+        return shared
+    }
+
     override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
         if selector == #selector(accessibilityPerformPress) ||
             selector == #selector(accessibilityPerformPick) {
