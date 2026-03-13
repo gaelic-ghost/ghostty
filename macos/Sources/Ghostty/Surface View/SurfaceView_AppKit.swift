@@ -2166,6 +2166,42 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         return NSRange(location: clampedLocation, length: markedText.length)
     }
 
+    private func resolvedInsertTextReplacementRange(
+        _ replacementRange: NSRange
+    ) -> (range: NSRange, reason: String) {
+        let insertionRange = NSRange(location: bestEffortInsertionLocation(), length: 0)
+
+        if hasMarkedText() {
+            let markedRange = currentMarkedDocumentRange()
+            if let adjustedRange = intersectedDocumentRange(replacementRange) {
+                let markedUpperBound = markedRange.location + markedRange.length
+                let adjustedUpperBound = adjustedRange.location + adjustedRange.length
+                if adjustedRange.location >= markedRange.location &&
+                    adjustedUpperBound <= markedUpperBound {
+                    return (adjustedRange, "activeMarkedTextRange")
+                }
+            }
+
+            return (markedRange, "activeMarkedTextFallback")
+        }
+
+        let selection = selectedRange()
+        if selection.location != NSNotFound {
+            return (selection, "currentSelection")
+        }
+
+        guard replacementRange.location != NSNotFound else {
+            return (insertionRange, "insertionPoint")
+        }
+
+        if replacementRange.length == 0 &&
+            abs(replacementRange.location - insertionRange.location) <= 1 {
+            return (insertionRange, "collapsedToInsertionPoint")
+        }
+
+        return (insertionRange, "ignoredUnsupportedReplacementRange")
+    }
+
     private func markedTextDocumentLocation(
         previousMarkedRange: NSRange,
         hadMarkedText: Bool,
@@ -2427,6 +2463,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         // We must have an associated event
         guard NSApp.currentEvent != nil else { return }
         guard let surfaceModel else { return }
+        let hadMarkedText = hasMarkedText()
 
         // We want the string view of the any value
         var chars = ""
@@ -2439,8 +2476,10 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             return
         }
 
+        let resolvedReplacement = resolvedInsertTextReplacementRange(replacementRange)
+
         traceInput(
-            "insertText replacementRange=\(NSStringFromRange(replacementRange)) chars=\(chars) accumulatorActive=\(keyTextAccumulator != nil) current=\(describeEvent(NSApp.currentEvent))"
+            "insertText replacementRange=\(NSStringFromRange(replacementRange)) resolvedReplacementRange=\(NSStringFromRange(resolvedReplacement.range)) reason=\(resolvedReplacement.reason) chars=\(chars) accumulatorActive=\(keyTextAccumulator != nil) current=\(describeEvent(NSApp.currentEvent))"
         )
 
         // If insertText is called, our preedit must be over.
@@ -2455,6 +2494,12 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         }
 
         surfaceModel.sendText(chars)
+        if !hadMarkedText {
+            postAccessibilityTextNotifications(
+                valueChanged: true,
+                selectionChanged: true
+            )
+        }
     }
 
     /// This function needs to exist for two reasons:

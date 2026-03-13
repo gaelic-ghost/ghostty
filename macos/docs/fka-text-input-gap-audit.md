@@ -84,6 +84,12 @@ The first contained contract-repair pass now does the following:
   indicator after each core wakeup/tick while Full Keyboard Access is active, which gives
   the AppKit cursor a truthful output-driven sync point without adding a timer or a new
   rendering coordinator
+- `insertText(_:replacementRange:)` now resolves `replacementRange` only against Ghostty's
+  real local text-input state: active marked text, an actual current selection, or the
+  best-effort insertion point. Unsupported ranges collapse back to insertion instead of
+  pretending the terminal owns editable backing storage for arbitrary committed output
+- plain committed-text insertion now posts accessibility value and selection notifications
+  too, so non-IME text commits update the system cursor and AX state more consistently
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -207,7 +213,9 @@ relevant notifications when their accessible state changes.
 
 ### Highest-risk semantic mismatches seen so far
 
-- `insertText(_:replacementRange:)` still ignores replacement instructions from AppKit
+- `insertText(_:replacementRange:)` is now state-aware, but it still intentionally declines
+  to model arbitrary backing-store replacement semantics beyond marked text, current
+  selection, or insertion-point-local fallback
 - `setMarkedText(_:selectedRange:replacementRange:)` is improved, but still only partially
   models AppKit's replacement semantics
 - visible selection geometry is still best-effort rather than backed by explicit terminal
