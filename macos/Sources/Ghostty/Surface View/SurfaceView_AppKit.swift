@@ -477,6 +477,8 @@ extension Ghostty {
                     self.notificationIdentifiers = []
                 }
             }
+
+            NSAccessibility.post(element: self, notification: .focusedUIElementChanged)
         }
 
         private func shouldTraceInput(_ event: NSEvent? = NSApp.currentEvent) -> Bool {
@@ -494,7 +496,41 @@ extension Ghostty {
 
             let chars = event.characters ?? "nil"
             let charsIgnoringModifiers = event.charactersIgnoringModifiers ?? "nil"
-            return "type=\(String(describing: event.type), privacy: .public) keyCode=\(event.keyCode) chars=\(chars, privacy: .public) charsIgnoringModifiers=\(charsIgnoringModifiers, privacy: .public) mods=\(event.modifierFlags.rawValue) repeat=\(event.isARepeat) window=\(event.windowNumber)"
+            return "type=\(String(describing: event.type)) keyCode=\(event.keyCode) chars=\(chars) charsIgnoringModifiers=\(charsIgnoringModifiers) mods=\(event.modifierFlags.rawValue) repeat=\(event.isARepeat) window=\(event.windowNumber)"
+        }
+
+        private func accessibilityInsertionRange() -> NSRange {
+            let content = cachedScreenContents.get()
+            return NSRange(location: content.count, length: 0)
+        }
+
+        private func accessibilityVisibleRange(fullContent: String, visibleContent: String) -> NSRange {
+            guard !fullContent.isEmpty else { return NSRange(location: 0, length: 0) }
+            guard !visibleContent.isEmpty else { return accessibilityInsertionRange() }
+
+            if let range = fullContent.range(of: visibleContent, options: .backwards) {
+                return NSRange(range, in: fullContent)
+            }
+
+            let visibleLength = min(visibleContent.count, fullContent.count)
+            return NSRange(location: max(0, fullContent.count - visibleLength), length: visibleLength)
+        }
+
+        private func characterOffset(in text: String, row: Int, column: Int) -> Int? {
+            guard row >= 0, column >= 0 else { return nil }
+
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            guard row < lines.count else { return nil }
+
+            var offset = 0
+            for index in 0..<row {
+                offset += lines[index].count
+                if index < lines.count - 1 {
+                    offset += 1
+                }
+            }
+
+            return offset + min(column, lines[row].count)
         }
 
         func sizeDidChange(_ size: CGSize) {
@@ -1175,13 +1211,13 @@ extension Ghostty {
             self.lastPerformKeyEvent = nil
 
             traceInput(
-                "keyDown begin focused=\(focused) markedBefore=\(markedTextBefore) keyboardBefore=\(keyboardIdBefore ?? "nil", privacy: .public) accumulatorActive=\(keyTextAccumulator != nil) translationSame=\(translationEvent == event) \(describeEvent(event))"
+                "keyDown begin focused=\(focused) markedBefore=\(markedTextBefore) keyboardBefore=\(keyboardIdBefore ?? "nil") accumulatorActive=\(keyTextAccumulator != nil) translationSame=\(translationEvent == event) \(describeEvent(event))"
             )
 
             self.interpretKeyEvents([translationEvent])
 
             traceInput(
-                "keyDown after interpret marked=\(markedText.length) accumulatorCount=\(keyTextAccumulator?.count ?? 0) lastPerformKeyEvent=\(String(describing: self.lastPerformKeyEvent), privacy: .public) translationText=\(translationEvent.ghosttyCharacters ?? "nil", privacy: .public)",
+                "keyDown after interpret marked=\(markedText.length) accumulatorCount=\(keyTextAccumulator?.count ?? 0) lastPerformKeyEvent=\(String(describing: self.lastPerformKeyEvent)) translationText=\(translationEvent.ghosttyCharacters ?? "nil")",
                 event: translationEvent
             )
 
@@ -1189,7 +1225,7 @@ extension Ghostty {
             // grabbed it and do nothing.
             if !markedTextBefore && keyboardIdBefore != KeyboardLayout.id {
                 traceInput(
-                    "keyDown keyboardChanged after interpret keyboardAfter=\(KeyboardLayout.id, privacy: .public)",
+                    "keyDown keyboardChanged after interpret keyboardAfter=\(KeyboardLayout.id)",
                     event: translationEvent
                 )
                 return
@@ -1931,7 +1967,28 @@ extension Ghostty.SurfaceView: NSTextInputClient {
     }
 
     func characterIndex(for point: NSPoint) -> Int {
-        return 0
+        guard let window else { return NSNotFound }
+        guard cellSize.width > 0, cellSize.height > 0 else { return NSNotFound }
+        guard let surfaceSize else { return NSNotFound }
+
+        let windowPoint = window.convertFromScreen(NSRect(origin: point, size: .zero)).origin
+        let localPoint = convert(windowPoint, from: nil)
+        guard bounds.contains(localPoint) else { return NSNotFound }
+
+        let maxColumn = max(Int(surfaceSize.columns) - 1, 0)
+        let maxRow = max(Int(surfaceSize.rows) - 1, 0)
+        let column = min(max(Int(localPoint.x / cellSize.width), 0), maxColumn)
+        let row = min(max(Int((bounds.height - localPoint.y) / cellSize.height), 0), maxRow)
+
+        let fullContent = cachedScreenContents.get()
+        let visibleContent = cachedVisibleContents.get()
+        let visibleRange = accessibilityVisibleRange(fullContent: fullContent, visibleContent: visibleContent)
+
+        guard let visibleOffset = characterOffset(in: visibleContent, row: row, column: column) else {
+            return NSNotFound
+        }
+
+        return min(visibleRange.location + visibleOffset, fullContent.count)
     }
 
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
@@ -2009,7 +2066,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         }
 
         traceInput(
-            "insertText replacementRange=\(NSStringFromRange(replacementRange), privacy: .public) chars=\(chars, privacy: .public) accumulatorActive=\(keyTextAccumulator != nil) current=\(describeEvent(NSApp.currentEvent))"
+            "insertText replacementRange=\(NSStringFromRange(replacementRange)) chars=\(chars) accumulatorActive=\(keyTextAccumulator != nil) current=\(describeEvent(NSApp.currentEvent))"
         )
 
         // If insertText is called, our preedit must be over.
@@ -2036,14 +2093,14 @@ extension Ghostty.SurfaceView: NSTextInputClient {
            let current = NSApp.currentEvent,
            lastPerformKeyEvent == current.timestamp {
             traceInput(
-                "doCommand redispatch selector=\(NSStringFromSelector(selector), privacy: .public) current=\(describeEvent(current))"
+                "doCommand redispatch selector=\(NSStringFromSelector(selector)) current=\(describeEvent(current))"
             )
             NSApp.sendEvent(current)
             return
         }
 
         traceInput(
-            "doCommand selector=\(NSStringFromSelector(selector), privacy: .public) current=\(describeEvent(NSApp.currentEvent))"
+            "doCommand selector=\(NSStringFromSelector(selector)) current=\(describeEvent(NSApp.currentEvent))"
         )
 
         guard let surfaceModel else { return }
@@ -2248,6 +2305,10 @@ extension Ghostty.SurfaceView {
          return true
      }
 
+    override func isAccessibilityFocused() -> Bool {
+        return focused && window?.firstResponder === self
+    }
+
     /// Defines the accessibility role for this view, which helps assistive technologies
     /// understand what kind of content this view contains and how users can interact with it.
     override func accessibilityRole() -> NSAccessibility.Role? {
@@ -2268,7 +2329,8 @@ extension Ghostty.SurfaceView {
     /// This allows VoiceOver and other assistive technologies to understand
     /// what text the user has selected.
     override func accessibilitySelectedTextRange() -> NSRange {
-        return selectedRange()
+        let selection = selectedRange()
+        return selection.length > 0 ? selection : accessibilityInsertionRange()
     }
 
     /// Returns the currently selected text as a string.
@@ -2293,10 +2355,12 @@ extension Ghostty.SurfaceView {
     }
 
     /// Returns the visible character range for the terminal.
-    /// For terminals, we typically show all content as visible.
+    /// Use the viewport cache so we expose what is actually visible instead of
+    /// claiming the entire scrollback buffer is always on-screen.
     override func accessibilityVisibleCharacterRange() -> NSRange {
-        let content = cachedScreenContents.get()
-        return NSRange(location: 0, length: content.count)
+        let fullContent = cachedScreenContents.get()
+        let visibleContent = cachedVisibleContents.get()
+        return accessibilityVisibleRange(fullContent: fullContent, visibleContent: visibleContent)
     }
 
     /// Returns the line number for a given character index.
