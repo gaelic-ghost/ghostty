@@ -73,8 +73,10 @@ The first contained contract-repair pass now does the following:
 - live scrolling now notifies `NSTextInputContext` when scrolling starts, progresses, and
   ends, gated by API availability, so AppKit has the documented scroll-away indicator hooks
 - on macOS 14 and newer, Ghostty now hosts a minimal `NSTextInsertionIndicator` view and
-  ties its frame and display mode to the terminal surface's insertion range, focus, and
-  size changes
+  ties its frame and display mode to the terminal surface's insertion range, focus, size
+  changes, cursor-visibility changes, and keyboard input handling
+- the system insertion indicator is now gated behind Full Keyboard Access so Ghostty users
+  do not get a second AppKit cursor unless that accessibility path is actually in use
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -203,8 +205,8 @@ relevant notifications when their accessible state changes.
   models AppKit's replacement semantics
 - visible selection geometry is still best-effort rather than backed by explicit terminal
   row/column selection bounds
-- `NSTextInsertionIndicator` updates are still minimal and not yet driven by every cursor
-  movement or terminal repaint
+- `NSTextInsertionIndicator` updates are improved, but still not driven by every cursor
+  movement or terminal repaint coming from terminal output
 - accessibility notifications are still incomplete outside IME, marked-text updates, and
   completed left-mouse selection changes
 

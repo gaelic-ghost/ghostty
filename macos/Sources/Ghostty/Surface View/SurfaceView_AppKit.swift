@@ -713,6 +713,11 @@ extension Ghostty {
         private func updateSystemTextInsertionIndicator() {
             guard #available(macOS 14.0, *) else { return }
 
+            guard NSApp.isFullKeyboardAccessEnabled, cursorVisible else {
+                (textInsertionIndicatorView as? NSTextInsertionIndicator)?.displayMode = .hidden
+                return
+            }
+
             let indicator = ensureTextInsertionIndicator()
             indicator.frame = currentTextInsertionIndicatorFrame()
             indicator.displayMode = focused && window?.firstResponder === self ? .automatic : .hidden
@@ -806,6 +811,7 @@ extension Ghostty {
             // mouse-hide-while-typing is the only use case so this is the
             // preferred method.
             NSCursor.setHiddenUntilMouseMoves(!visible)
+            updateSystemTextInsertionIndicator()
         }
 
         /// Set the title by prompting the user.
@@ -1480,6 +1486,8 @@ extension Ghostty {
                     composing: markedText.length > 0 || markedTextBefore
                 )
             }
+
+            updateSystemTextInsertionIndicator()
         }
 
         override func keyUp(with event: NSEvent) {
