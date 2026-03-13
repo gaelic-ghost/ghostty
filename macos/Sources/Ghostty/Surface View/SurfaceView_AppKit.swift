@@ -2440,7 +2440,7 @@ extension Ghostty.SurfaceView {
         /// where users can input commands and view output.
         let role: NSAccessibility.Role =
             NSApp.isFullKeyboardAccessEnabled && focused && window?.firstResponder === self
-            ? .group
+            ? .textField
             : .textArea
         if NSApp.isFullKeyboardAccessEnabled {
             traceInput("accessibilityRole result=\(role.rawValue)")
