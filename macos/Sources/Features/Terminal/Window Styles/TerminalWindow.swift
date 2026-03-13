@@ -58,6 +58,57 @@ class TerminalWindow: NSWindow {
         windowController as? TerminalController
     }
 
+    func shouldTraceWindowEvent(_ event: NSEvent) -> Bool {
+        if NSApp.isFullKeyboardAccessEnabled {
+            return true
+        }
+
+        switch event.type {
+        case .keyDown, .keyUp, .flagsChanged:
+            return event.keyCode == 0x31
+        case .leftMouseDown, .leftMouseUp,
+            .rightMouseDown, .rightMouseUp,
+            .otherMouseDown, .otherMouseUp:
+            return true
+        default:
+            return false
+        }
+    }
+
+    func describeWindowEvent(_ event: NSEvent) -> String {
+        let keyEventTypes: Set<NSEvent.EventType> = [
+            .keyDown,
+            .keyUp,
+            .flagsChanged,
+        ]
+        let mouseEventTypes: Set<NSEvent.EventType> = [
+            .leftMouseDown,
+            .leftMouseUp,
+            .rightMouseDown,
+            .rightMouseUp,
+            .otherMouseDown,
+            .otherMouseUp,
+        ]
+        let keyCode = keyEventTypes.contains(event.type) ? String(event.keyCode) : "n/a"
+        let chars = keyEventTypes.contains(event.type) ? (event.characters ?? "nil") : "n/a"
+        let charsIgnoringModifiers = keyEventTypes.contains(event.type)
+            ? (event.charactersIgnoringModifiers ?? "nil")
+            : "n/a"
+        let buttonNumber = mouseEventTypes.contains(event.type) ? String(event.buttonNumber) : "n/a"
+        let clickCount = mouseEventTypes.contains(event.type) ? String(event.clickCount) : "n/a"
+        let location = mouseEventTypes.contains(event.type)
+            ? "(\(event.locationInWindow.x),\(event.locationInWindow.y))"
+            : "n/a"
+        return "type=\(String(describing: event.type)) keyCode=\(keyCode) chars=\(chars) charsIgnoringModifiers=\(charsIgnoringModifiers) mods=\(event.modifierFlags.rawValue) button=\(buttonNumber) clicks=\(clickCount) location=\(location) window=\(event.windowNumber)"
+    }
+
+    func traceWindowEvent(_ message: String, event: NSEvent) {
+        guard shouldTraceWindowEvent(event) else { return }
+        let logLine = "terminal window trace class=\(String(describing: type(of: self))) \(message)"
+        Ghostty.logger.debug("\(logLine, privacy: .public)")
+        print(logLine)
+    }
+
     /// The color assigned to this window's tab. Setting this updates the tab color indicator
     /// and marks the window's restorable state as dirty.
     var tabColor: TerminalTabColor = .none {
@@ -180,7 +231,9 @@ class TerminalWindow: NSWindow {
     override var canBecomeMain: Bool { return true }
 
     override func sendEvent(_ event: NSEvent) {
+        traceWindowEvent("sendEvent \(describeWindowEvent(event))", event: event)
         if tabTitleEditor.handleMouseDown(event) {
+            traceWindowEvent("sendEvent handledBy=tabTitleEditor", event: event)
             return
         }
 

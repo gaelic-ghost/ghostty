@@ -71,6 +71,7 @@ class TitlebarTabsTahoeTerminalWindow: TransparentTitlebarTerminalWindow, NSTool
     /// On our Tahoe titlebar tabs, we need to fix up right click events because they don't work
     /// naturally due to whatever mess we made.
     override func sendEvent(_ event: NSEvent) {
+        traceWindowEvent("sendEvent(tahoe) \(describeWindowEvent(event))", event: event)
         guard viewModel.hasTabBar else {
             super.sendEvent(event)
             return
@@ -91,6 +92,7 @@ class TitlebarTabsTahoeTerminalWindow: TransparentTitlebarTerminalWindow, NSTool
         }
 
         guard !tabTitleEditor.handleRightMouseDown(event) else {
+            traceWindowEvent("sendEvent(tahoe) handledBy=tabTitleEditor", event: event)
             return
         }
 
@@ -100,6 +102,7 @@ class TitlebarTabsTahoeTerminalWindow: TransparentTitlebarTerminalWindow, NSTool
             return
         }
 
+        traceWindowEvent("sendEvent(tahoe) handledBy=tabBarView", event: event)
         tabBarView.rightMouseDown(with: event)
     }
 
