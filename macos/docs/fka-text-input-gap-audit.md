@@ -90,6 +90,10 @@ The first contained contract-repair pass now does the following:
   pretending the terminal owns editable backing storage for arbitrary committed output
 - plain committed-text insertion now posts accessibility value and selection notifications
   too, so non-IME text commits update the system cursor and AX state more consistently
+- marked-text composition now posts `textInputMarkingSessionBegan` and
+  `textInputMarkingSessionEnded`, so AppKit gets the documented marking-session lifecycle
+- viewport and geometry changes now post `layoutChanged` with the terminal surface in the
+  `uiElements` payload when the surface size changes or Ghostty publishes scrollbar updates
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -224,8 +228,8 @@ relevant notifications when their accessible state changes.
   changes, cell-metric changes, and post-tick focused-surface refreshes, but they are
   still downstream of Ghostty's existing wakeup/tick plumbing rather than a dedicated
   explicit "cursor moved" callback from core
-- accessibility notifications are still incomplete outside IME, marked-text updates, and
-  completed left-mouse selection changes
+- accessibility notifications are improved, but output-driven text-value changes and some
+  non-mouse selection changes still lack explicit notification coverage
 
 ## Audit Checklist
 

@@ -698,6 +698,28 @@ extension Ghostty {
             updateSystemTextInsertionIndicator()
         }
 
+        private func postAccessibilityLayoutChanged() {
+            NSAccessibility.post(
+                element: self,
+                notification: .layoutChanged,
+                userInfo: [.uiElements: [self]]
+            )
+        }
+
+        private func postAccessibilityMarkingSessionBegan() {
+            NSAccessibility.post(
+                element: self,
+                notification: NSAccessibility.Notification(rawValue: "NSAccessibilityTextInputMarkingSessionBegan")
+            )
+        }
+
+        private func postAccessibilityMarkingSessionEnded() {
+            NSAccessibility.post(
+                element: self,
+                notification: NSAccessibility.Notification(rawValue: "NSAccessibilityTextInputMarkingSessionEnded")
+            )
+        }
+
         @available(macOS 14.0, *)
         private func ensureTextInsertionIndicator() -> NSTextInsertionIndicator {
             if let indicator = textInsertionIndicatorView as? NSTextInsertionIndicator {
@@ -746,6 +768,7 @@ extension Ghostty {
             // Store this size so we can reuse it when backing properties change
             contentSize = size
             updateSystemTextInsertionIndicator()
+            postAccessibilityLayoutChanged()
         }
 
         private func setSurfaceSize(width: UInt32, height: UInt32) {
@@ -1079,6 +1102,7 @@ extension Ghostty {
         @objc private func ghosttyDidUpdateScrollbar(_ notification: SwiftUI.Notification) {
             DispatchQueue.main.async { [weak self] in
                 self?.updateSystemTextInsertionIndicator()
+                self?.postAccessibilityLayoutChanged()
             }
         }
 
@@ -2299,6 +2323,10 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             syncPreedit()
         }
 
+        if !hadMarkedText && markedText.length > 0 {
+            postAccessibilityMarkingSessionBegan()
+        }
+
         postAccessibilityTextNotifications(
             valueChanged: true,
             selectionChanged: true
@@ -2311,6 +2339,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             markedTextSelectionRange = NSRange(location: NSNotFound, length: 0)
             markedTextDocumentLocation = nil
             syncPreedit()
+            postAccessibilityMarkingSessionEnded()
             postAccessibilityTextNotifications(
                 valueChanged: true,
                 selectionChanged: true
