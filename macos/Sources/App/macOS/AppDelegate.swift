@@ -212,6 +212,11 @@ class AppDelegate: NSObject,
         print(logLine)
     }
 
+    private func describeAccessibilityObject(_ object: Any?) -> String {
+        guard let object else { return "nil" }
+        return String(describing: type(of: object as AnyObject))
+    }
+
     override init() {
 #if DEBUG
         ghostty = Ghostty.App(configPath: ProcessInfo.processInfo.environment["GHOSTTY_CONFIG_PATH"])
@@ -615,7 +620,12 @@ class AppDelegate: NSObject,
     /// This handles events from the NSEvent.addLocalEventMonitor. We use this so we can get
     /// events without any terminal windows open.
     private func localEventHandler(_ event: NSEvent) -> NSEvent? {
-        traceAppEvent("localEventHandler start \(describeAppEvent(event))", event: event)
+        let focusedElement = describeAccessibilityObject(NSApp.accessibilityApplicationFocusedUIElement())
+        let focusedWindow = describeAccessibilityObject(NSApp.accessibilityFocusedWindow())
+        traceAppEvent(
+            "localEventHandler start focusedElement=\(focusedElement) focusedWindow=\(focusedWindow) \(describeAppEvent(event))",
+            event: event
+        )
         return switch event.type {
         case .keyDown:
             localEventKeyDown(event)
