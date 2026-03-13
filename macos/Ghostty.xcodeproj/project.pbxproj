@@ -267,6 +267,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		49A7A8002F64CA24006A22D6 /* docs */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = docs; sourceTree = "<group>"; };
 		810ACCA02E9D3302004F8F92 /* GhosttyUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = GhosttyUITests; sourceTree = "<group>"; };
 		81F82BC72E82815D001EDFA7 /* Sources */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (81F82CB12E8281F9001EDFA7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 81F82CB02E8281F5001EDFA7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 8193245D2F24E80800A9ED8F /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Sources; sourceTree = "<group>"; };
 		A54F45F42E1F047A0046BD5C /* Tests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Tests; sourceTree = "<group>"; };
@@ -335,6 +336,7 @@
 		A5B30528299BEAAA0047F10C = {
 			isa = PBXGroup;
 			children = (
+				49A7A8002F64CA24006A22D6 /* docs */,
 				A571AB1C2A206FC600248498 /* Ghostty-Info.plist */,
 				8F3A9B4B2FA6B88000A18D13 /* Ghostty.sdef */,
 				A5B30538299BEAAB0047F10C /* Assets.xcassets */,
