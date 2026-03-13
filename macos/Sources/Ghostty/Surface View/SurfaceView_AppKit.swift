@@ -488,7 +488,9 @@ extension Ghostty {
 
         private func traceInput(_ message: String, event: NSEvent? = NSApp.currentEvent) {
             guard shouldTraceInput(event) else { return }
-            Ghostty.logger.debug("surface input trace id=\(self.id, privacy: .public) \(message, privacy: .public)")
+            let logLine = "surface input trace id=\(self.id) \(message)"
+            Ghostty.logger.debug("\(logLine, privacy: .public)")
+            print(logLine)
         }
 
         private func describeEvent(_ event: NSEvent?) -> String {
