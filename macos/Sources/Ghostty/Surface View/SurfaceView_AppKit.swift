@@ -2346,6 +2346,14 @@ extension Ghostty.SurfaceView {
     }
 
     override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(accessibilityPerformPress) ||
+            selector == #selector(accessibilityPerformPick) {
+            traceInput(
+                "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=false override=terminalSurface"
+            )
+            return false
+        }
+
         let allowed = super.isAccessibilitySelectorAllowed(selector)
         traceInput(
             "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=\(allowed)"
