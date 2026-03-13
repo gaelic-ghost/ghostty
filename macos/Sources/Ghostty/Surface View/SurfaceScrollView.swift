@@ -91,6 +91,9 @@ class SurfaceScrollView: NSView {
             queue: .main
         ) { [weak self] _ in
             self?.isLiveScrolling = true
+            if #available(macOS 14.0, *) {
+                self?.surfaceView.inputContext?.textInputClientWillStartScrollingOrZooming()
+            }
         })
 
         observers.append(NotificationCenter.default.addObserver(
@@ -99,6 +102,9 @@ class SurfaceScrollView: NSView {
             queue: .main
         ) { [weak self] _ in
             self?.isLiveScrolling = false
+            if #available(macOS 14.0, *) {
+                self?.surfaceView.inputContext?.textInputClientDidEndScrollingOrZooming()
+            }
         })
 
         observers.append(NotificationCenter.default.addObserver(
@@ -107,6 +113,9 @@ class SurfaceScrollView: NSView {
             queue: .main
         ) { [weak self] _ in
             self?.handleLiveScroll()
+            if #available(macOS 15.4, *) {
+                self?.surfaceView.inputContext?.textInputClientDidScroll()
+            }
         })
 
         observers.append(NotificationCenter.default.addObserver(

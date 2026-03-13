@@ -679,6 +679,9 @@ extension Ghostty {
             }
             if selectionChanged {
                 NSAccessibility.post(element: self, notification: .selectedTextChanged)
+                if #available(macOS 15.4, *) {
+                    inputContext?.textInputClientDidUpdateSelection()
+                }
             }
         }
 

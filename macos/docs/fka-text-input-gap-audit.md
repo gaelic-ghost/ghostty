@@ -68,6 +68,10 @@ The first contained contract-repair pass now does the following:
   selection actually changed
 - `unionRectInVisibleSelectedRange` now derives a best-effort visible selection or
   insertion rect from the cached visible terminal text and monospaced cell metrics
+- selection updates now notify `NSTextInputContext` via `textInputClientDidUpdateSelection()`,
+  gated by API availability
+- live scrolling now notifies `NSTextInputContext` when scrolling starts, progresses, and
+  ends, gated by API availability, so AppKit has the documented scroll-away indicator hooks
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -187,7 +191,6 @@ relevant notifications when their accessible state changes.
 ### Missing from the currently inspected `SurfaceView` implementation
 
 - `NSTextInsertionIndicator` integration
-- text-input-context scrolling notifications documented by Apple's custom cursor guidance
 - accessibility value/selection change notifications for terminal content and selection
   changes outside the marked-text path and completed left-mouse selection gestures
 
