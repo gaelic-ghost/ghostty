@@ -443,6 +443,10 @@ extension Ghostty {
             guard self.focused != focused else { return }
             self.focused = focused
 
+            traceInput(
+                "focusDidChange focused=\(focused) windowKey=\(window?.isKeyWindow == true) appActive=\(NSApp.isActive) fka=\(NSApp.isFullKeyboardAccessEnabled)"
+            )
+
             // If we lost our focus then remove the mouse event suppression so
             // our mouse release event leaving the surface can properly be
             // sent to stop things like mouse selection.
@@ -473,6 +477,24 @@ extension Ghostty {
                     self.notificationIdentifiers = []
                 }
             }
+        }
+
+        private func shouldTraceInput(_ event: NSEvent? = NSApp.currentEvent) -> Bool {
+            guard let event else { return NSApp.isFullKeyboardAccessEnabled }
+            return NSApp.isFullKeyboardAccessEnabled || event.keyCode == 0x31
+        }
+
+        private func traceInput(_ message: String, event: NSEvent? = NSApp.currentEvent) {
+            guard shouldTraceInput(event) else { return }
+            Ghostty.logger.debug("surface input trace id=\(self.id, privacy: .public) \(message, privacy: .public)")
+        }
+
+        private func describeEvent(_ event: NSEvent?) -> String {
+            guard let event else { return "event=nil" }
+
+            let chars = event.characters ?? "nil"
+            let charsIgnoringModifiers = event.charactersIgnoringModifiers ?? "nil"
+            return "type=\(String(describing: event.type), privacy: .public) keyCode=\(event.keyCode) chars=\(chars, privacy: .public) charsIgnoringModifiers=\(charsIgnoringModifiers, privacy: .public) mods=\(event.modifierFlags.rawValue) repeat=\(event.isARepeat) window=\(event.windowNumber)"
         }
 
         func sizeDidChange(_ size: CGSize) {
@@ -1152,11 +1174,24 @@ extension Ghostty {
             // `interpretKeyEvents` may dispatch it.
             self.lastPerformKeyEvent = nil
 
+            traceInput(
+                "keyDown begin focused=\(focused) markedBefore=\(markedTextBefore) keyboardBefore=\(keyboardIdBefore ?? "nil", privacy: .public) accumulatorActive=\(keyTextAccumulator != nil) translationSame=\(translationEvent == event) \(describeEvent(event))"
+            )
+
             self.interpretKeyEvents([translationEvent])
+
+            traceInput(
+                "keyDown after interpret marked=\(markedText.length) accumulatorCount=\(keyTextAccumulator?.count ?? 0) lastPerformKeyEvent=\(String(describing: self.lastPerformKeyEvent), privacy: .public) translationText=\(translationEvent.ghosttyCharacters ?? "nil", privacy: .public)",
+                event: translationEvent
+            )
 
             // If our keyboard changed from this we just assume an input method
             // grabbed it and do nothing.
             if !markedTextBefore && keyboardIdBefore != KeyboardLayout.id {
+                traceInput(
+                    "keyDown keyboardChanged after interpret keyboardAfter=\(KeyboardLayout.id, privacy: .public)",
+                    event: translationEvent
+                )
                 return
             }
 
@@ -1973,6 +2008,10 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             return
         }
 
+        traceInput(
+            "insertText replacementRange=\(NSStringFromRange(replacementRange), privacy: .public) chars=\(chars, privacy: .public) accumulatorActive=\(keyTextAccumulator != nil) current=\(describeEvent(NSApp.currentEvent))"
+        )
+
         // If insertText is called, our preedit must be over.
         unmarkText()
 
@@ -1996,11 +2035,18 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         if let lastPerformKeyEvent,
            let current = NSApp.currentEvent,
            lastPerformKeyEvent == current.timestamp {
+            traceInput(
+                "doCommand redispatch selector=\(NSStringFromSelector(selector), privacy: .public) current=\(describeEvent(current))"
+            )
             NSApp.sendEvent(current)
             return
         }
 
-		guard let surfaceModel else { return }
+        traceInput(
+            "doCommand selector=\(NSStringFromSelector(selector), privacy: .public) current=\(describeEvent(NSApp.currentEvent))"
+        )
+
+        guard let surfaceModel else { return }
         // Process MacOS native scroll events
         switch selector {
         case #selector(moveToBeginningOfDocument(_:)):
@@ -2010,8 +2056,6 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         default:
             break
         }
-
-        print("SEL: \(selector)")
     }
 
     /// Sync the preedit state based on the markedText value to libghostty
