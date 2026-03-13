@@ -2402,6 +2402,23 @@ extension Ghostty.SurfaceView {
         return allowed
     }
 
+    override func accessibilityChildren() -> [Any]? {
+        let children = super.accessibilityChildren()
+        if NSApp.isFullKeyboardAccessEnabled {
+            traceInput("accessibilityChildren count=\(children?.count ?? 0)")
+        }
+        return children
+    }
+
+    override func accessibilityParent() -> Any? {
+        let parent = super.accessibilityParent()
+        if NSApp.isFullKeyboardAccessEnabled {
+            let description = parent.map { String(describing: type(of: $0 as AnyObject)) } ?? "nil"
+            traceInput("accessibilityParent result=\(description)")
+        }
+        return parent
+    }
+
     /// Defines the accessibility role for this view, which helps assistive technologies
     /// understand what kind of content this view contains and how users can interact with it.
     override func accessibilityRole() -> NSAccessibility.Role? {
