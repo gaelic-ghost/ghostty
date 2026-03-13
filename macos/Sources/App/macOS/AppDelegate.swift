@@ -217,6 +217,39 @@ class AppDelegate: NSObject,
         return String(describing: type(of: object as AnyObject))
     }
 
+    private func describeAccessibilityState(_ object: Any?) -> String {
+        guard let object else { return "nil" }
+
+        if let view = object as? NSView {
+            let role = view.accessibilityRole()?.rawValue ?? "nil"
+            let enabled = view.isAccessibilityEnabled()
+            let focused = view.isAccessibilityFocused()
+            let parent = describeAccessibilityObject(view.accessibilityParent())
+            let childCount = view.accessibilityChildren()?.count ?? 0
+            return "type=\(describeAccessibilityObject(object)) role=\(role) enabled=\(enabled) focused=\(focused) parent=\(parent) childCount=\(childCount)"
+        }
+
+        if let window = object as? NSWindow {
+            let role = window.accessibilityRole()?.rawValue ?? "nil"
+            let enabled = window.isAccessibilityEnabled()
+            let focused = window.isAccessibilityFocused()
+            let parent = describeAccessibilityObject(window.accessibilityParent())
+            let childCount = window.accessibilityChildren()?.count ?? 0
+            return "type=\(describeAccessibilityObject(object)) role=\(role) enabled=\(enabled) focused=\(focused) parent=\(parent) childCount=\(childCount)"
+        }
+
+        if let element = object as? NSAccessibilityElement {
+            let role = element.accessibilityRole()?.rawValue ?? "nil"
+            let enabled = element.isAccessibilityEnabled()
+            let focused = element.isAccessibilityFocused()
+            let parent = describeAccessibilityObject(element.accessibilityParent())
+            let childCount = element.accessibilityChildren()?.count ?? 0
+            return "type=\(describeAccessibilityObject(object)) role=\(role) enabled=\(enabled) focused=\(focused) parent=\(parent) childCount=\(childCount)"
+        }
+
+        return "type=\(describeAccessibilityObject(object)) accessible=false"
+    }
+
     override init() {
 #if DEBUG
         ghostty = Ghostty.App(configPath: ProcessInfo.processInfo.environment["GHOSTTY_CONFIG_PATH"])
@@ -620,8 +653,8 @@ class AppDelegate: NSObject,
     /// This handles events from the NSEvent.addLocalEventMonitor. We use this so we can get
     /// events without any terminal windows open.
     private func localEventHandler(_ event: NSEvent) -> NSEvent? {
-        let focusedElement = describeAccessibilityObject(NSApp.accessibilityApplicationFocusedUIElement())
-        let focusedWindow = describeAccessibilityObject(NSApp.accessibilityFocusedWindow())
+        let focusedElement = describeAccessibilityState(NSApp.accessibilityApplicationFocusedUIElement())
+        let focusedWindow = describeAccessibilityState(NSApp.accessibilityFocusedWindow())
         traceAppEvent(
             "localEventHandler start focusedElement=\(focusedElement) focusedWindow=\(focusedWindow) \(describeAppEvent(event))",
             event: event
