@@ -116,6 +116,12 @@ extension Ghostty {
         func appTick() {
             guard let app = self.app else { return }
             ghostty_app_tick(app)
+
+#if os(macOS)
+            guard NSApp.isFullKeyboardAccessEnabled else { return }
+            guard let surfaceView = NSApp.accessibilityApplicationFocusedUIElement() as? Ghostty.SurfaceView else { return }
+            surfaceView.refreshSystemTextInsertionIndicator()
+#endif
         }
 
         static func openConfig() {

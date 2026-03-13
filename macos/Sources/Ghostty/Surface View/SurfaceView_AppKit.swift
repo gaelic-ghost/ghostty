@@ -732,6 +732,10 @@ extension Ghostty {
             indicator.displayMode = focused && window?.firstResponder === self ? .automatic : .hidden
         }
 
+        func refreshSystemTextInsertionIndicator() {
+            updateSystemTextInsertionIndicator()
+        }
+
         func sizeDidChange(_ size: CGSize) {
             // Ghostty wants to know the actual framebuffer size... It is very important
             // here that we use "size" and NOT the view frame. If we're in the middle of

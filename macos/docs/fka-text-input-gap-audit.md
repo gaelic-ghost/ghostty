@@ -80,6 +80,10 @@ The first contained contract-repair pass now does the following:
 - system cursor geometry now also refreshes when Ghostty publishes `ghosttyDidUpdateScrollbar`
   and when the terminal cell size changes, which covers more output-driven viewport motion
   without inventing a polling layer or fake repaint abstraction
+- Ghostty's macOS `appTick()` path now refreshes the focused surface's system insertion
+  indicator after each core wakeup/tick while Full Keyboard Access is active, which gives
+  the AppKit cursor a truthful output-driven sync point without adding a timer or a new
+  rendering coordinator
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -209,8 +213,9 @@ relevant notifications when their accessible state changes.
 - visible selection geometry is still best-effort rather than backed by explicit terminal
   row/column selection bounds
 - `NSTextInsertionIndicator` updates are improved and now follow scrollbar-driven viewport
-  changes and cell-metric changes, but they are still not driven by every cursor movement
-  or repaint coming from terminal output that does not surface through those existing hooks
+  changes, cell-metric changes, and post-tick focused-surface refreshes, but they are
+  still downstream of Ghostty's existing wakeup/tick plumbing rather than a dedicated
+  explicit "cursor moved" callback from core
 - accessibility notifications are still incomplete outside IME, marked-text updates, and
   completed left-mouse selection changes
 
