@@ -161,6 +161,57 @@ class AppDelegate: NSObject,
     /// If multiple items map to the same shortcut, the most recent one wins.
     private var menuItemsByShortcut: [MenuShortcutKey: Weak<NSMenuItem>] = [:]
 
+    private func shouldTraceAppEvent(_ event: NSEvent) -> Bool {
+        if NSApp.isFullKeyboardAccessEnabled {
+            return true
+        }
+
+        switch event.type {
+        case .keyDown, .keyUp, .flagsChanged:
+            return event.keyCode == 0x31
+        case .leftMouseDown, .leftMouseUp,
+            .rightMouseDown, .rightMouseUp,
+            .otherMouseDown, .otherMouseUp:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func describeAppEvent(_ event: NSEvent) -> String {
+        let keyEventTypes: Set<NSEvent.EventType> = [
+            .keyDown,
+            .keyUp,
+            .flagsChanged,
+        ]
+        let mouseEventTypes: Set<NSEvent.EventType> = [
+            .leftMouseDown,
+            .leftMouseUp,
+            .rightMouseDown,
+            .rightMouseUp,
+            .otherMouseDown,
+            .otherMouseUp,
+        ]
+        let keyCode = keyEventTypes.contains(event.type) ? String(event.keyCode) : "n/a"
+        let chars = keyEventTypes.contains(event.type) ? (event.characters ?? "nil") : "n/a"
+        let charsIgnoringModifiers = keyEventTypes.contains(event.type)
+            ? (event.charactersIgnoringModifiers ?? "nil")
+            : "n/a"
+        let buttonNumber = mouseEventTypes.contains(event.type) ? String(event.buttonNumber) : "n/a"
+        let clickCount = mouseEventTypes.contains(event.type) ? String(event.clickCount) : "n/a"
+        let location = mouseEventTypes.contains(event.type)
+            ? "(\(event.locationInWindow.x),\(event.locationInWindow.y))"
+            : "n/a"
+        return "type=\(String(describing: event.type)) keyCode=\(keyCode) chars=\(chars) charsIgnoringModifiers=\(charsIgnoringModifiers) mods=\(event.modifierFlags.rawValue) button=\(buttonNumber) clicks=\(clickCount) location=\(location) window=\(event.windowNumber)"
+    }
+
+    private func traceAppEvent(_ message: String, event: NSEvent) {
+        guard shouldTraceAppEvent(event) else { return }
+        let logLine = "app event trace \(message)"
+        Self.logger.debug("\(logLine, privacy: .public)")
+        print(logLine)
+    }
+
     override init() {
 #if DEBUG
         ghostty = Ghostty.App(configPath: ProcessInfo.processInfo.environment["GHOSTTY_CONFIG_PATH"])
@@ -230,7 +281,7 @@ class AppDelegate: NSObject,
         // Setup a local event monitor for app-level keyboard shortcuts. See
         // localEventHandler for more info why.
         _ = NSEvent.addLocalMonitorForEvents(
-            matching: [.keyDown],
+            matching: [.keyDown, .leftMouseDown, .leftMouseUp],
             handler: localEventHandler)
 
         // Notifications
@@ -564,9 +615,13 @@ class AppDelegate: NSObject,
     /// This handles events from the NSEvent.addLocalEventMonitor. We use this so we can get
     /// events without any terminal windows open.
     private func localEventHandler(_ event: NSEvent) -> NSEvent? {
+        traceAppEvent("localEventHandler start \(describeAppEvent(event))", event: event)
         return switch event.type {
         case .keyDown:
             localEventKeyDown(event)
+
+        case .leftMouseDown, .leftMouseUp:
+            event
 
         default:
             event
