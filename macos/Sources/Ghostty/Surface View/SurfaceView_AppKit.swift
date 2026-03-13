@@ -2354,7 +2354,9 @@ extension Ghostty.SurfaceView {
      }
 
     override func isAccessibilityEnabled() -> Bool {
-        let enabled = super.isAccessibilityEnabled()
+        let enabled = focused && window?.firstResponder === self
+            ? true
+            : super.isAccessibilityEnabled()
         if NSApp.isFullKeyboardAccessEnabled {
             traceInput(
                 "isAccessibilityEnabled result=\(enabled) focused=\(focused) windowFirstResponderMatches=\(window?.firstResponder === self)"
