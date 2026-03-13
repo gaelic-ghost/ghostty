@@ -66,6 +66,8 @@ The first contained contract-repair pass now does the following:
   `selectedTextChanged`
 - completed left-mouse selection gestures now post `selectedTextChanged` when the terminal
   selection actually changed
+- `unionRectInVisibleSelectedRange` now derives a best-effort visible selection or
+  insertion rect from the cached visible terminal text and monospaced cell metrics
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -184,7 +186,6 @@ relevant notifications when their accessible state changes.
 
 ### Missing from the currently inspected `SurfaceView` implementation
 
-- `unionRectInVisibleSelectedRange`
 - `NSTextInsertionIndicator` integration
 - text-input-context scrolling notifications documented by Apple's custom cursor guidance
 - accessibility value/selection change notifications for terminal content and selection
@@ -195,8 +196,8 @@ relevant notifications when their accessible state changes.
 - `insertText(_:replacementRange:)` still ignores replacement instructions from AppKit
 - `setMarkedText(_:selectedRange:replacementRange:)` is improved, but still only partially
   models AppKit's replacement semantics
-- `unionRectInVisibleSelectedRange` and related accessory-placement geometry are still
-  incomplete
+- visible selection geometry is still best-effort rather than backed by explicit terminal
+  row/column selection bounds
 - no `NSTextInsertionIndicator` integration
 - accessibility notifications are still incomplete outside IME, marked-text updates, and
   completed left-mouse selection changes

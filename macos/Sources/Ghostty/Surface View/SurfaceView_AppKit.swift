@@ -566,6 +566,98 @@ extension Ghostty {
             return offset + min(column, lines[row].count)
         }
 
+        private func textLineMetrics(in text: String) -> [(start: Int, length: Int)] {
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            var metrics: [(start: Int, length: Int)] = []
+            var offset = 0
+
+            for (index, line) in lines.enumerated() {
+                metrics.append((start: offset, length: line.count))
+                offset += line.count
+                if index < lines.count - 1 {
+                    offset += 1
+                }
+            }
+
+            if metrics.isEmpty {
+                metrics.append((start: 0, length: 0))
+            }
+
+            return metrics
+        }
+
+        private func textPosition(
+            in lineMetrics: [(start: Int, length: Int)],
+            for offset: Int
+        ) -> (row: Int, column: Int)? {
+            guard !lineMetrics.isEmpty else { return nil }
+
+            for (row, line) in lineMetrics.enumerated() {
+                let lineEnd = line.start + line.length
+                if offset <= lineEnd {
+                    return (row: row, column: min(max(offset - line.start, 0), line.length))
+                }
+            }
+
+            guard let lastLine = lineMetrics.last else { return nil }
+            return (row: max(lineMetrics.count - 1, 0), column: lastLine.length)
+        }
+
+        private func unionRectInVisibleSelectedRange(
+            selectedRange: NSRange,
+            visibleRange: NSRange,
+            visibleContent: String
+        ) -> NSRect? {
+            guard selectedRange.location != NSNotFound else { return nil }
+            guard cellSize.width > 0, cellSize.height > 0 else { return nil }
+
+            let visibleSelection = NSIntersectionRange(selectedRange, visibleRange)
+            guard visibleSelection.location != NSNotFound else { return nil }
+
+            let relativeLocation = max(visibleSelection.location - visibleRange.location, 0)
+            let lineMetrics = textLineMetrics(in: visibleContent)
+
+            if visibleSelection.length == 0 {
+                guard let position = textPosition(in: lineMetrics, for: relativeLocation) else { return nil }
+                return NSRect(
+                    x: CGFloat(position.column) * cellSize.width,
+                    y: bounds.height - CGFloat(position.row + 1) * cellSize.height,
+                    width: 0,
+                    height: cellSize.height
+                )
+            }
+
+            let relativeEnd = relativeLocation + visibleSelection.length
+            var minColumn = Int.max
+            var maxColumn = Int.min
+
+            guard let startPosition = textPosition(in: lineMetrics, for: relativeLocation),
+                  let endPosition = textPosition(in: lineMetrics, for: max(relativeEnd - 1, relativeLocation))
+            else { return nil }
+
+            for row in startPosition.row...endPosition.row {
+                let line = lineMetrics[row]
+                let lineStart = line.start
+                let lineEnd = line.start + line.length
+                let selectedStart = max(relativeLocation, lineStart)
+                let selectedEnd = min(relativeEnd, lineEnd)
+
+                guard selectedStart < selectedEnd else { continue }
+
+                minColumn = min(minColumn, selectedStart - lineStart)
+                maxColumn = max(maxColumn, selectedEnd - lineStart)
+            }
+
+            guard minColumn != Int.max, maxColumn != Int.min else { return nil }
+
+            return NSRect(
+                x: CGFloat(minColumn) * cellSize.width,
+                y: bounds.height - CGFloat(endPosition.row + 1) * cellSize.height,
+                width: CGFloat(maxColumn - minColumn) * cellSize.width,
+                height: CGFloat(endPosition.row - startPosition.row + 1) * cellSize.height
+            )
+        }
+
         private func shouldTraceAccessibilitySelector(_ selector: Selector) -> Bool {
             let tracedSelectors: Set<String> = [
                 NSStringFromSelector(#selector(accessibilityPerformPress)),
@@ -2243,6 +2335,19 @@ extension Ghostty.SurfaceView: NSTextInputClient {
 
     var documentVisibleRect: NSRect {
         return bounds
+    }
+
+    var unionRectInVisibleSelectedRange: NSRect {
+        let fullContent = cachedScreenContents.get()
+        let visibleContent = cachedVisibleContents.get()
+        let visibleRange = accessibilityVisibleRange(fullContent: fullContent, visibleContent: visibleContent)
+        let selectedRange = accessibilitySelectedTextRange()
+
+        return unionRectInVisibleSelectedRange(
+            selectedRange: selectedRange,
+            visibleRange: visibleRange,
+            visibleContent: visibleContent
+        ) ?? .zero
     }
 
     @available(macOS 14.0, *)
