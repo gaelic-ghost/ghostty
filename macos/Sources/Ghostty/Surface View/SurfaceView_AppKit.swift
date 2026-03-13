@@ -501,11 +501,32 @@ extension Ghostty {
                 .keyUp,
                 .flagsChanged,
             ]
+            let mouseEventTypes: Set<NSEvent.EventType> = [
+                .leftMouseDown,
+                .leftMouseUp,
+                .rightMouseDown,
+                .rightMouseUp,
+                .otherMouseDown,
+                .otherMouseUp,
+                .leftMouseDragged,
+                .rightMouseDragged,
+                .otherMouseDragged,
+                .mouseMoved,
+                .mouseEntered,
+                .mouseExited,
+            ]
+            let keyCode = keyEventTypes.contains(event.type) ? String(event.keyCode) : "n/a"
             let chars = keyEventTypes.contains(event.type) ? (event.characters ?? "nil") : "n/a"
             let charsIgnoringModifiers = keyEventTypes.contains(event.type)
                 ? (event.charactersIgnoringModifiers ?? "nil")
                 : "n/a"
-            return "type=\(String(describing: event.type)) keyCode=\(event.keyCode) chars=\(chars) charsIgnoringModifiers=\(charsIgnoringModifiers) mods=\(event.modifierFlags.rawValue) repeat=\(event.isARepeat) window=\(event.windowNumber)"
+            let repeatState = keyEventTypes.contains(event.type) ? String(event.isARepeat) : "n/a"
+            let buttonNumber = mouseEventTypes.contains(event.type) ? String(event.buttonNumber) : "n/a"
+            let clickCount = mouseEventTypes.contains(event.type) ? String(event.clickCount) : "n/a"
+            let location = mouseEventTypes.contains(event.type)
+                ? "(\(event.locationInWindow.x),\(event.locationInWindow.y))"
+                : "n/a"
+            return "type=\(String(describing: event.type)) keyCode=\(keyCode) chars=\(chars) charsIgnoringModifiers=\(charsIgnoringModifiers) mods=\(event.modifierFlags.rawValue) repeat=\(repeatState) button=\(buttonNumber) clicks=\(clickCount) location=\(location) window=\(event.windowNumber)"
         }
 
         private func accessibilityInsertionRange() -> NSRange {
