@@ -1941,25 +1941,57 @@ extension Ghostty {
 // MARK: - NSTextInputClient
 
 extension Ghostty.SurfaceView: NSTextInputClient {
+    private func documentTextLength() -> Int {
+        cachedScreenContents.get().count
+    }
+
+    private func intersectedDocumentRange(_ proposedRange: NSRange) -> NSRange? {
+        guard proposedRange.location != NSNotFound else { return nil }
+
+        let documentLength = documentTextLength()
+        let documentRange = NSRange(location: 0, length: documentLength)
+        let adjustedRange = NSIntersectionRange(proposedRange, documentRange)
+
+        if adjustedRange.length == 0 {
+            if proposedRange.length == 0 && proposedRange.location <= documentLength {
+                return NSRange(location: proposedRange.location, length: 0)
+            }
+
+            return nil
+        }
+
+        return adjustedRange
+    }
+
     func hasMarkedText() -> Bool {
         return markedText.length > 0
     }
 
     func markedRange() -> NSRange {
-        guard markedText.length > 0 else { return NSRange() }
+        guard markedText.length > 0 else { return NSRange(location: NSNotFound, length: 0) }
         return NSRange(0...(markedText.length-1))
     }
 
     func selectedRange() -> NSRange {
-        guard let surface = self.surface else { return NSRange() }
+        guard let surface = self.surface else {
+            return NSRange(location: NSNotFound, length: 0)
+        }
 
         // Get our range from the Ghostty API. There is a race condition between getting the
         // range and actually using it since our selection may change but there isn't a good
         // way I can think of to solve this for AppKit.
         var text = ghostty_text_s()
-        guard ghostty_surface_read_selection(surface, &text) else { return NSRange() }
+        guard ghostty_surface_read_selection(surface, &text) else {
+            return NSRange(location: NSNotFound, length: 0)
+        }
         defer { ghostty_surface_free_text(surface, &text) }
-        return NSRange(location: Int(text.offset_start), length: Int(text.offset_len))
+
+        let range = NSRange(location: Int(text.offset_start), length: Int(text.offset_len))
+        if range.length == 0 {
+            return NSRange(location: NSNotFound, length: 0)
+        }
+
+        return range
     }
 
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
@@ -1995,28 +2027,20 @@ extension Ghostty.SurfaceView: NSTextInputClient {
     }
 
     func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
-        // Ghostty.logger.warning("pressure substring range=\(range) selectedRange=\(self.selectedRange())")
-        guard let surface = self.surface else { return nil }
+        guard let adjustedRange = intersectedDocumentRange(range), adjustedRange.length > 0 else {
+            return nil
+        }
+        actualRange?.pointee = adjustedRange
 
-        // If the range is empty then we don't need to return anything
-        guard range.length > 0 else { return nil }
-
-        // I used to do a bunch of testing here that the range requested matches the
-        // selection range or contains it but a lot of macOS system behaviors request
-        // bogus ranges I truly don't understand so we just always return the
-        // attributed string containing our selection which is... weird but works?
-
-        // Get our selection text
-        var text = ghostty_text_s()
-        guard ghostty_surface_read_selection(surface, &text) else { return nil }
-        defer { ghostty_surface_free_text(surface, &text) }
+        let content = cachedScreenContents.get()
+        let plainString = (content as NSString).substring(with: adjustedRange)
 
         // If we can get a font then we use the font. This should always work
         // since we always have a primary font. The only scenario this doesn't
         // work is if someone is using a non-CoreText build which would be
         // unofficial.
         var attributes: [ NSAttributedString.Key: Any ] = [:]
-        if let fontRaw = ghostty_surface_quicklook_font(surface) {
+        if let surface = self.surface, let fontRaw = ghostty_surface_quicklook_font(surface) {
             // Memory management here is wonky: ghostty_surface_quicklook_font
             // will create a copy of a CTFont, Swift will auto-retain the
             // unretained value passed into the dict, so we release the original.
@@ -2025,7 +2049,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             font.release()
         }
 
-        return .init(string: String(cString: text.text), attributes: attributes)
+        return .init(string: plainString, attributes: attributes)
     }
 
     func characterIndex(for point: NSPoint) -> Int {
@@ -2057,6 +2081,8 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         guard let surface = self.surface else {
             return NSRect(x: frame.origin.x, y: frame.origin.y, width: 0, height: 0)
         }
+        let adjustedRange = intersectedDocumentRange(range) ?? NSRange(location: documentTextLength(), length: 0)
+        actualRange?.pointee = adjustedRange
 
         // Ghostty will tell us where it thinks an IME keyboard should render.
         var x: Double = 0
@@ -2068,7 +2094,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         // this then we return the top-left selection point rather than the cursor point.
         // This is hacky but I can't think of a better way to get the right IME vs. QuickLook
         // point right now. I'm sure I'm missing something fundamental...
-        if range.length > 0 && range != self.selectedRange() {
+        if adjustedRange.length > 0 && adjustedRange != self.selectedRange() {
             // QuickLook
             var text = ghostty_text_s()
             if ghostty_surface_read_selection(surface, &text) {
@@ -2085,12 +2111,12 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         } else {
             ghostty_surface_ime_point(surface, &x, &y, &width, &height)
         }
-        if range.length == 0, width > 0 {
+        if adjustedRange.length == 0, width > 0 {
             // This fixes #8493 while speaking
             // My guess is that positive width doesn't make sense
             // for the dictation microphone indicator
             width = 0
-            x += cellSize.width * Double(range.location + range.length)
+            x += cellSize.width * Double(adjustedRange.location + adjustedRange.length)
         }
         // Ghostty coordinates are in top-left (0, 0) so we have to convert to
         // bottom-left since that is what UIKit expects

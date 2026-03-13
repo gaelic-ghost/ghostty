@@ -34,17 +34,34 @@ looks much flatter than a normal editable text target from AppKit's perspective.
 issue is not one missing callback. It is the overall shape of the text-input and
 accessibility contract.
 
+## First-Tier Repairs Applied In This Branch
+
+The first contained contract-repair pass now does the following:
+
+- `selectedRange()` returns `{NSNotFound, 0}` when there is no terminal selection
+- `markedRange()` returns `{NSNotFound, 0}` when there is no marked text
+- `attributedSubstring(forProposedRange:actualRange:)` intersects the requested range with
+  the document range instead of always returning the current selection
+- `attributedSubstring(forProposedRange:actualRange:)` now reports `actualRange` when the
+  requested range is adjusted
+- `firstRect(forCharacterRange:actualRange:)` now reports an adjusted range through
+  `actualRange`
+
+These changes keep the existing architecture in place and focus only on documented
+`NSTextInputClient` contract repair.
+
 ## Initial Findings
 
 ### 1. `selectedRange()` appears to violate AppKit's empty-selection contract
 
 Apple documents `selectedRange()` as returning the selected range, or `{NSNotFound, 0}` if
-there is no selection. Ghostty currently returns `NSRange()`, which is `{0, 0}`, whenever
-there is no readable terminal selection or no backing surface.
+there is no selection. Ghostty previously returned `NSRange()`, which is `{0, 0}`, whenever
+there was no readable terminal selection or no backing surface.
 
 That is not a cosmetic difference. `{0, 0}` means "insertion point at the start of the
 document," while `{NSNotFound, 0}` means "there is no selection range available." For a
 custom text input client, that distinction can change how AppKit interprets the text state.
+This mismatch is now repaired in the branch, but it remains an important finding.
 
 ### 2. `attributedSubstring(forProposedRange:actualRange:)` is returning selection text instead of the requested range
 
@@ -60,7 +77,8 @@ Ghostty currently has a comment that says, in substance:
 - the author explicitly describes this as "weird but works"
 
 That comment is one of the clearest signs in the file that Ghostty is papering over AppKit
-text-range expectations instead of satisfying them. This is a high-priority audit finding.
+text-range expectations instead of satisfying them. This was a high-priority audit finding,
+and the branch now replaces that behavior with document-range intersection.
 
 ### 3. `actualRange` outputs are currently ignored in key geometry/text callbacks
 
@@ -70,9 +88,10 @@ requested range must be adjusted:
 - `attributedSubstring(forProposedRange:actualRange:)`
 - `firstRect(forCharacterRange:actualRange:)`
 
-Ghostty does not currently populate those adjusted ranges. Given how often the comments
+Ghostty previously did not populate those adjusted ranges. Given how often the comments
 already mention mismatched or "bogus" requests from AppKit services, not reporting the
-adjusted range back is another likely source of mismatch.
+adjusted range back was another likely source of mismatch. The branch now reports adjusted
+ranges for both methods.
 
 ### 4. Placement and visibility APIs from Apple's custom text-view path are absent
 
@@ -152,10 +171,9 @@ relevant notifications when their accessible state changes.
 
 ### Highest-risk semantic mismatches seen so far
 
-- empty selection represented as `{0, 0}` instead of `{NSNotFound, 0}`
-- substring requests answered with current selection text instead of the requested range
-- range-adjustment out parameters not being reported back
 - replacement and selected-subrange instructions from AppKit being ignored
+- placement and visibility hooks from Apple's custom text-view path still missing
+- no `NSTextInsertionIndicator` integration
 
 ## Audit Checklist
 
