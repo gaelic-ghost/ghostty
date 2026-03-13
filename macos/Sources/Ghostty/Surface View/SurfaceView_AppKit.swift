@@ -221,6 +221,7 @@ extension Ghostty {
         private var markedTextSelectionRange: NSRange = NSRange(location: NSNotFound, length: 0)
         private var markedTextDocumentLocation: Int?
         private var selectionRangeBeforeLeftMouseInteraction: NSRange?
+        private var textInsertionIndicatorView: NSView?
         private(set) var focused: Bool = true
         private var prevPressureStage: Int = 0
         private var appearanceObserver: NSKeyValueObservation?
@@ -481,6 +482,7 @@ extension Ghostty {
                 }
             }
 
+            updateSystemTextInsertionIndicator()
             NSAccessibility.post(element: self, notification: .focusedUIElementChanged)
         }
 
@@ -683,6 +685,37 @@ extension Ghostty {
                     inputContext?.textInputClientDidUpdateSelection()
                 }
             }
+
+            updateSystemTextInsertionIndicator()
+        }
+
+        @available(macOS 14.0, *)
+        private func ensureTextInsertionIndicator() -> NSTextInsertionIndicator {
+            if let indicator = textInsertionIndicatorView as? NSTextInsertionIndicator {
+                return indicator
+            }
+
+            let indicator = NSTextInsertionIndicator(frame: .zero)
+            indicator.displayMode = .hidden
+            addSubview(indicator)
+            textInsertionIndicatorView = indicator
+            return indicator
+        }
+
+        private func currentTextInsertionIndicatorFrame() -> NSRect {
+            let insertionRange = accessibilityInsertionRange()
+            let screenRect = firstRect(forCharacterRange: insertionRange, actualRange: nil)
+            guard let window else { return .zero }
+            let windowRect = window.convertFromScreen(screenRect)
+            return convert(windowRect, from: nil)
+        }
+
+        private func updateSystemTextInsertionIndicator() {
+            guard #available(macOS 14.0, *) else { return }
+
+            let indicator = ensureTextInsertionIndicator()
+            indicator.frame = currentTextInsertionIndicatorFrame()
+            indicator.displayMode = focused && window?.firstResponder === self ? .automatic : .hidden
         }
 
         func sizeDidChange(_ size: CGSize) {
@@ -694,6 +727,7 @@ extension Ghostty {
             setSurfaceSize(width: UInt32(scaledSize.width), height: UInt32(scaledSize.height))
             // Store this size so we can reuse it when backing properties change
             contentSize = size
+            updateSystemTextInsertionIndicator()
         }
 
         private func setSurfaceSize(width: UInt32, height: UInt32) {
