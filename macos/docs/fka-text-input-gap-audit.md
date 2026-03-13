@@ -287,3 +287,55 @@ The next pass should produce:
 - a table or checklist of implemented versus missing AppKit expectations
 - a short list of likely fix candidates ordered from least invasive to most invasive
 - explicit separation between observational tracing and behavior-changing diagnostics
+
+## Preliminary Fix Ranking
+
+### 1. Repair the existing `NSTextInputClient` range semantics
+
+Try this first, because it is the least invasive and most clearly documented:
+
+- return the correct empty-selection sentinel from `selectedRange()`
+- audit `markedRange()` for the same kind of sentinel/empty-state correctness
+- make `attributedSubstring(forProposedRange:actualRange:)` honor the requested range or
+  intersect it with the document range as Apple documents
+- populate `actualRange` when ranges are adjusted
+- stop ignoring `replacementRange` and `selectedRange` inputs where AppKit provides them
+
+This is a contract-repair pass, not an architectural rewrite.
+
+### 2. Add the missing placement and visibility hooks Apple documents
+
+Next, implement or expose:
+
+- `documentVisibleRect`
+- `unionRectInVisibleSelectedRange`
+- `preferredTextAccessoryPlacement()`
+- `windowLevel()`
+- any necessary `NSTextInputContext` scrolling/zooming notifications
+
+These are still relatively contained changes and line up directly with Apple's custom text
+view guidance.
+
+### 3. Evaluate system insertion indicator adoption
+
+If Ghostty wants to stay on the custom text-view path, evaluate adding
+`NSTextInsertionIndicator` support without replacing the rest of the renderer.
+
+This may help the system understand the insertion point better, but it should come after
+the text-range contract repair rather than before it.
+
+### 4. Revisit the accessibility surface only after the text-input contract is cleaner
+
+Only after the `NSTextInputClient` and insertion-point semantics are less misleading should
+we revisit:
+
+- role choice
+- focused-child/shared-focus topology
+- whether one flat accessibility surface is sufficient
+- whether an inner editable accessibility target is actually needed
+
+Warning:
+
+Adding a new accessibility child or another custom layer may be unnecessary and is exactly
+the kind of change that can make this codebase more brittle. It should be treated as the
+highest-risk option, not the default first fix.
