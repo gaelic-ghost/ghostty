@@ -752,14 +752,25 @@ extension Ghostty {
         }
 
         private func localEventLeftMouseDown(_ event: NSEvent) -> NSEvent? {
+            traceInput(
+                "localEventLeftMouseDown start firstResponderMatches=\(window?.firstResponder === self) appActive=\(NSApp.isActive) windowKey=\(window?.isKeyWindow == true) \(describeEvent(event))",
+                event: event
+            )
+
             // We only want to process events that are on this window.
             guard let window,
                   event.window != nil,
-                  window == event.window else { return event }
+                  window == event.window else {
+                traceInput("localEventLeftMouseDown passthrough reason=windowMismatch", event: event)
+                return event
+            }
 
             // The clicked location in this window should be this view.
             let location = convert(event.locationInWindow, from: nil)
-            guard hitTest(location) == self else { return event }
+            guard hitTest(location) == self else {
+                traceInput("localEventLeftMouseDown passthrough reason=hitTestMismatch", event: event)
+                return event
+            }
 
             // We always assume that we're resetting our mouse suppression
             // unless we see the specific scenario below to set it.
@@ -768,6 +779,7 @@ extension Ghostty {
             // If we're already the first responder then no focus transfer is
             // happening, so the click should continue as normal.
             guard window.firstResponder !== self else {
+                traceInput("localEventLeftMouseDown passthrough reason=alreadyFirstResponder", event: event)
                 return event
             }
 
@@ -777,6 +789,7 @@ extension Ghostty {
             if NSApp.isActive && window.isKeyWindow {
                 window.makeFirstResponder(self)
                 suppressNextLeftMouseUp = true
+                traceInput("localEventLeftMouseDown consumed reason=splitFocusTransfer suppressNextLeftMouseUp=\(suppressNextLeftMouseUp)", event: event)
                 return nil
             }
 
@@ -786,6 +799,7 @@ extension Ghostty {
             // We have to keep processing the event so that AppKit can properly
             // focus the window and dispatch events. If you return nil here then
             // nobody gets a windowDidBecomeKey event and so on.
+            traceInput("localEventLeftMouseDown passthrough reason=focusWindowTransfer", event: event)
             return event
         }
 
