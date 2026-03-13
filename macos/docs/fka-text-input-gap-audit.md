@@ -46,6 +46,11 @@ The first contained contract-repair pass now does the following:
   coordinates when composition is active
 - `setMarkedText(_:selectedRange:replacementRange:)` now tracks the marked-text document
   location and selected subrange instead of discarding both range parameters entirely
+- when marked text is already active, `replacementRange` is now treated relative to the
+  existing marked-text span rather than as a raw document offset
+- when there is no marked text, `setMarkedText` now falls back to the current terminal
+  selection or best-effort insertion point instead of trusting `replacementRange` as though
+  Ghostty were a normal editable backing store
 - `attributedSubstring(forProposedRange:actualRange:)` intersects the requested range with
   the document range instead of always returning the current selection
 - `attributedSubstring(forProposedRange:actualRange:)` now reports `actualRange` when the
@@ -134,8 +139,9 @@ Ghostty currently ignores important parts of that contract:
 - `setMarkedText(_:selectedRange:replacementRange:)` accepts both `selectedRange` and
   `replacementRange`, but the older implementation only stored the string and synced
   preedit state. It did not use either range parameter. The current branch now partially
-  repairs this by tracking the marked-text document location and selected subrange, but it
-  still does not model full document replacement semantics.
+  repairs this by tracking the marked-text document location, the selected subrange, and
+  marked-text-relative replacement offsets, but it still does not model full document
+  replacement semantics.
 - `insertText(_:replacementRange:)` accepts a `replacementRange`, but the current
   implementation ignores it and forwards only the inserted string to the terminal model.
 

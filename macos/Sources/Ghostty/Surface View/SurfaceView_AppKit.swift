@@ -1988,6 +1988,31 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         return NSRange(location: clampedLocation, length: markedText.length)
     }
 
+    private func markedTextDocumentLocation(
+        previousMarkedRange: NSRange,
+        hadMarkedText: Bool,
+        replacementRange: NSRange
+    ) -> Int {
+        if hadMarkedText, previousMarkedRange.location != NSNotFound {
+            if replacementRange.location != NSNotFound {
+                let clampedReplacement = clampedMarkedSelectionRange(
+                    replacementRange,
+                    markedLength: previousMarkedRange.length
+                )
+                return previousMarkedRange.location + clampedReplacement.location
+            }
+
+            return previousMarkedRange.location
+        }
+
+        let currentSelection = selectedRange()
+        if currentSelection.location != NSNotFound {
+            return currentSelection.location
+        }
+
+        return bestEffortInsertionLocation()
+    }
+
     func hasMarkedText() -> Bool {
         return markedText.length > 0
     }
@@ -2039,13 +2064,17 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             print("unknown marked text: \(string)")
         }
 
-        if hadMarkedText, markedRangeBefore.location != NSNotFound {
-            markedTextDocumentLocation = markedRangeBefore.location
-        } else if replacementRange.location != NSNotFound {
-            markedTextDocumentLocation = min(max(replacementRange.location, 0), documentTextLength())
-        } else {
-            markedTextDocumentLocation = bestEffortInsertionLocation()
-        }
+        markedTextDocumentLocation = min(
+            max(
+                markedTextDocumentLocation(
+                    previousMarkedRange: markedRangeBefore,
+                    hadMarkedText: hadMarkedText,
+                    replacementRange: replacementRange
+                ),
+                0
+            ),
+            documentTextLength()
+        )
         markedTextSelectionRange = clampedMarkedSelectionRange(selectedRange, markedLength: markedText.length)
 
         // If we're not in a keyDown event, then we want to update our preedit
