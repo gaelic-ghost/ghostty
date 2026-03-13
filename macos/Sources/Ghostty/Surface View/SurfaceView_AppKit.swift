@@ -938,6 +938,7 @@ extension Ghostty {
 
         override func mouseDown(with event: NSEvent) {
             guard let surface = self.surface else { return }
+            traceInput("mouseDown \(describeEvent(event))", event: event)
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods)
         }
@@ -955,6 +956,7 @@ extension Ghostty {
 
             // If we have an active surface, report the event
             guard let surface = self.surface else { return }
+            traceInput("mouseUp \(describeEvent(event)) suppressNextLeftMouseUp=\(suppressNextLeftMouseUp)", event: event)
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods)
 
@@ -964,6 +966,7 @@ extension Ghostty {
 
         override func otherMouseDown(with event: NSEvent) {
             guard let surface = self.surface else { return }
+            traceInput("otherMouseDown button=\(event.buttonNumber) \(describeEvent(event))", event: event)
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             let button = Ghostty.Input.MouseButton(fromNSEventButtonNumber: event.buttonNumber)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, button.cMouseButton, mods)
@@ -971,6 +974,7 @@ extension Ghostty {
 
         override func otherMouseUp(with event: NSEvent) {
             guard let surface = self.surface else { return }
+            traceInput("otherMouseUp button=\(event.buttonNumber) \(describeEvent(event))", event: event)
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             let button = Ghostty.Input.MouseButton(fromNSEventButtonNumber: event.buttonNumber)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, button.cMouseButton, mods)
@@ -978,6 +982,7 @@ extension Ghostty {
 
         override func rightMouseDown(with event: NSEvent) {
             guard let surface = self.surface else { return super.rightMouseDown(with: event) }
+            traceInput("rightMouseDown \(describeEvent(event))", event: event)
 
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             if ghostty_surface_mouse_button(
@@ -996,6 +1001,7 @@ extension Ghostty {
 
         override func rightMouseUp(with event: NSEvent) {
             guard let surface = self.surface else { return super.rightMouseUp(with: event) }
+            traceInput("rightMouseUp \(describeEvent(event))", event: event)
 
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             if ghostty_surface_mouse_button(
