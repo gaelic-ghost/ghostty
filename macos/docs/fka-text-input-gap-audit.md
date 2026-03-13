@@ -77,6 +77,9 @@ The first contained contract-repair pass now does the following:
   changes, cursor-visibility changes, and keyboard input handling
 - the system insertion indicator is now gated behind Full Keyboard Access so Ghostty users
   do not get a second AppKit cursor unless that accessibility path is actually in use
+- system cursor geometry now also refreshes when Ghostty publishes `ghosttyDidUpdateScrollbar`
+  and when the terminal cell size changes, which covers more output-driven viewport motion
+  without inventing a polling layer or fake repaint abstraction
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -205,8 +208,9 @@ relevant notifications when their accessible state changes.
   models AppKit's replacement semantics
 - visible selection geometry is still best-effort rather than backed by explicit terminal
   row/column selection bounds
-- `NSTextInsertionIndicator` updates are improved, but still not driven by every cursor
-  movement or terminal repaint coming from terminal output
+- `NSTextInsertionIndicator` updates are improved and now follow scrollbar-driven viewport
+  changes and cell-metric changes, but they are still not driven by every cursor movement
+  or repaint coming from terminal output that does not surface through those existing hooks
 - accessibility notifications are still incomplete outside IME, marked-text updates, and
   completed left-mouse selection changes
 

@@ -33,7 +33,11 @@ extension Ghostty {
         // surface is first created and any time the cell size changes (i.e.
         // when the font size changes). This is used to allow windows to be
         // resized in discrete steps of a single cell.
-        @Published var cellSize: NSSize = .zero
+        @Published var cellSize: NSSize = .zero {
+            didSet {
+                updateSystemTextInsertionIndicator()
+            }
+        }
 
         // The health state of the surface. This currently only reflects the
         // renderer health. In the future we may want to make this an enum.
@@ -376,6 +380,11 @@ extension Ghostty {
                 selector: #selector(windowDidChangeScreen),
                 name: NSWindow.didChangeScreenNotification,
                 object: nil)
+            center.addObserver(
+                self,
+                selector: #selector(ghosttyDidUpdateScrollbar(_:)),
+                name: .ghosttyDidUpdateScrollbar,
+                object: self)
 
             // Listen for local events that we need to know of outside of
             // single surface handlers.
@@ -1060,6 +1069,12 @@ extension Ghostty {
             // Issue: https://github.com/ghostty-org/ghostty/issues/2731
             DispatchQueue.main.async { [weak self] in
                 self?.viewDidChangeBackingProperties()
+            }
+        }
+
+        @objc private func ghosttyDidUpdateScrollbar(_ notification: SwiftUI.Notification) {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateSystemTextInsertionIndicator()
             }
         }
 
