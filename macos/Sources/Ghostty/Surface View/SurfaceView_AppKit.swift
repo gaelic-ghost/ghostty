@@ -496,8 +496,15 @@ extension Ghostty {
         private func describeEvent(_ event: NSEvent?) -> String {
             guard let event else { return "event=nil" }
 
-            let chars = event.characters ?? "nil"
-            let charsIgnoringModifiers = event.charactersIgnoringModifiers ?? "nil"
+            let keyEventTypes: Set<NSEvent.EventType> = [
+                .keyDown,
+                .keyUp,
+                .flagsChanged,
+            ]
+            let chars = keyEventTypes.contains(event.type) ? (event.characters ?? "nil") : "n/a"
+            let charsIgnoringModifiers = keyEventTypes.contains(event.type)
+                ? (event.charactersIgnoringModifiers ?? "nil")
+                : "n/a"
             return "type=\(String(describing: event.type)) keyCode=\(event.keyCode) chars=\(chars) charsIgnoringModifiers=\(charsIgnoringModifiers) mods=\(event.modifierFlags.rawValue) repeat=\(event.isARepeat) window=\(event.windowNumber)"
         }
 
