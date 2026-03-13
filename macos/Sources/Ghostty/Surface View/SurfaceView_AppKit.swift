@@ -563,6 +563,18 @@ extension Ghostty {
             return offset + min(column, lines[row].count)
         }
 
+        private func shouldTraceAccessibilitySelector(_ selector: Selector) -> Bool {
+            let tracedSelectors: Set<String> = [
+                NSStringFromSelector(#selector(accessibilityPerformPress)),
+                NSStringFromSelector(#selector(accessibilityPerformPick)),
+                NSStringFromSelector(#selector(setAccessibilityFocused(_:))),
+                NSStringFromSelector(#selector(accessibilitySharedFocusElements)),
+                "setAccessibilityFocused:",
+            ]
+
+            return tracedSelectors.contains(NSStringFromSelector(selector))
+        }
+
         func sizeDidChange(_ size: CGSize) {
             // Ghostty wants to know the actual framebuffer size... It is very important
             // here that we use "size" and NOT the view frame. If we're in the middle of
@@ -2354,7 +2366,9 @@ extension Ghostty.SurfaceView {
 
     override func accessibilitySharedFocusElements() -> [Any]? {
         let shared = super.accessibilitySharedFocusElements()
-        traceInput("accessibilitySharedFocusElements count=\(shared?.count ?? 0)")
+        if let shared, !shared.isEmpty {
+            traceInput("accessibilitySharedFocusElements count=\(shared.count)")
+        }
         return shared
     }
 
@@ -2368,9 +2382,11 @@ extension Ghostty.SurfaceView {
         }
 
         let allowed = super.isAccessibilitySelectorAllowed(selector)
-        traceInput(
-            "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=\(allowed)"
-        )
+        if shouldTraceAccessibilitySelector(selector) {
+            traceInput(
+                "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=\(allowed)"
+            )
+        }
         return allowed
     }
 
