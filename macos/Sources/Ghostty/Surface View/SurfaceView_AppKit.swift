@@ -2210,6 +2210,19 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         return window.convertToScreen(winRect)
     }
 
+    var documentVisibleRect: NSRect {
+        return bounds
+    }
+
+    @available(macOS 14.0, *)
+    func preferredTextAccessoryPlacement() -> NSTextCursorAccessoryPlacement {
+        return .unspecified
+    }
+
+    func windowLevel() -> Int {
+        return Int(window?.level.rawValue ?? 0)
+    }
+
     func insertText(_ string: Any, replacementRange: NSRange) {
         // We must have an associated event
         guard NSApp.currentEvent != nil else { return }

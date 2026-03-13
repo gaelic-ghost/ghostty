@@ -57,6 +57,11 @@ The first contained contract-repair pass now does the following:
   requested range is adjusted
 - `firstRect(forCharacterRange:actualRange:)` now reports an adjusted range through
   `actualRange`
+- `documentVisibleRect` now reports the terminal viewport bounds that `SurfaceView`
+  actually renders
+- `preferredTextAccessoryPlacement()` now returns `.unspecified` instead of leaving the
+  placement contract entirely absent
+- `windowLevel()` now exposes the host window level directly from AppKit
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -175,10 +180,7 @@ relevant notifications when their accessible state changes.
 
 ### Missing from the currently inspected `SurfaceView` implementation
 
-- `documentVisibleRect`
 - `unionRectInVisibleSelectedRange`
-- `preferredTextAccessoryPlacement()`
-- `windowLevel()`
 - `NSTextInsertionIndicator` integration
 - text-input-context scrolling notifications documented by Apple's custom cursor guidance
 - accessibility value/selection change notifications beyond focus change
@@ -188,7 +190,8 @@ relevant notifications when their accessible state changes.
 - `insertText(_:replacementRange:)` still ignores replacement instructions from AppKit
 - `setMarkedText(_:selectedRange:replacementRange:)` is improved, but still only partially
   models AppKit's replacement semantics
-- placement and visibility hooks from Apple's custom text-view path still missing
+- `unionRectInVisibleSelectedRange` and related accessory-placement geometry are still
+  incomplete
 - no `NSTextInsertionIndicator` integration
 
 ## Audit Checklist
