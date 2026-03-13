@@ -220,6 +220,7 @@ extension Ghostty {
         private var markedText: NSMutableAttributedString
         private var markedTextSelectionRange: NSRange = NSRange(location: NSNotFound, length: 0)
         private var markedTextDocumentLocation: Int?
+        private var selectionRangeBeforeLeftMouseInteraction: NSRange?
         private(set) var focused: Bool = true
         private var prevPressureStage: Int = 0
         private var appearanceObserver: NSKeyValueObservation?
@@ -575,6 +576,18 @@ extension Ghostty {
             ]
 
             return tracedSelectors.contains(NSStringFromSelector(selector))
+        }
+
+        private func postAccessibilityTextNotifications(
+            valueChanged: Bool = false,
+            selectionChanged: Bool = false
+        ) {
+            if valueChanged {
+                NSAccessibility.post(element: self, notification: .valueChanged)
+            }
+            if selectionChanged {
+                NSAccessibility.post(element: self, notification: .selectedTextChanged)
+            }
         }
 
         func sizeDidChange(_ size: CGSize) {
@@ -994,6 +1007,7 @@ extension Ghostty {
 
         override func mouseDown(with event: NSEvent) {
             guard let surface = self.surface else { return }
+            selectionRangeBeforeLeftMouseInteraction = selectedRange()
             traceInput("mouseDown \(describeEvent(event))", event: event)
             let mods = Ghostty.ghosttyMods(event.modifierFlags)
             ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods)
@@ -1004,6 +1018,7 @@ extension Ghostty {
             // suppress it so we don't emit a release without a press.
             if suppressNextLeftMouseUp {
                 suppressNextLeftMouseUp = false
+                selectionRangeBeforeLeftMouseInteraction = nil
                 return
             }
 
@@ -1018,6 +1033,13 @@ extension Ghostty {
 
             // Release pressure
             ghostty_surface_mouse_pressure(surface, 0, 0)
+
+            let selectionAfterInteraction = selectedRange()
+            if let selectionBeforeInteraction = selectionRangeBeforeLeftMouseInteraction,
+               selectionBeforeInteraction != selectionAfterInteraction {
+                postAccessibilityTextNotifications(selectionChanged: true)
+            }
+            selectionRangeBeforeLeftMouseInteraction = nil
         }
 
         override func otherMouseDown(with event: NSEvent) {
@@ -2084,6 +2106,11 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         if keyTextAccumulator == nil {
             syncPreedit()
         }
+
+        postAccessibilityTextNotifications(
+            valueChanged: true,
+            selectionChanged: true
+        )
     }
 
     func unmarkText() {
@@ -2092,6 +2119,10 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             markedTextSelectionRange = NSRange(location: NSNotFound, length: 0)
             markedTextDocumentLocation = nil
             syncPreedit()
+            postAccessibilityTextNotifications(
+                valueChanged: true,
+                selectionChanged: true
+            )
         }
     }
 

@@ -62,6 +62,10 @@ The first contained contract-repair pass now does the following:
 - `preferredTextAccessoryPlacement()` now returns `.unspecified` instead of leaving the
   placement contract entirely absent
 - `windowLevel()` now exposes the host window level directly from AppKit
+- marked-text changes now post accessibility notifications for `valueChanged` and
+  `selectedTextChanged`
+- completed left-mouse selection gestures now post `selectedTextChanged` when the terminal
+  selection actually changed
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -183,7 +187,8 @@ relevant notifications when their accessible state changes.
 - `unionRectInVisibleSelectedRange`
 - `NSTextInsertionIndicator` integration
 - text-input-context scrolling notifications documented by Apple's custom cursor guidance
-- accessibility value/selection change notifications beyond focus change
+- accessibility value/selection change notifications for terminal content and selection
+  changes outside the marked-text path and completed left-mouse selection gestures
 
 ### Highest-risk semantic mismatches seen so far
 
@@ -193,6 +198,8 @@ relevant notifications when their accessible state changes.
 - `unionRectInVisibleSelectedRange` and related accessory-placement geometry are still
   incomplete
 - no `NSTextInsertionIndicator` integration
+- accessibility notifications are still incomplete outside IME, marked-text updates, and
+  completed left-mouse selection changes
 
 ## Audit Checklist
 
