@@ -2353,6 +2353,16 @@ extension Ghostty.SurfaceView {
          return true
      }
 
+    override func isAccessibilityEnabled() -> Bool {
+        let enabled = super.isAccessibilityEnabled()
+        if NSApp.isFullKeyboardAccessEnabled {
+            traceInput(
+                "isAccessibilityEnabled result=\(enabled) focused=\(focused) windowFirstResponderMatches=\(window?.firstResponder === self)"
+            )
+        }
+        return enabled
+    }
+
     override func isAccessibilityFocused() -> Bool {
         return focused && window?.firstResponder === self
     }
@@ -2395,7 +2405,11 @@ extension Ghostty.SurfaceView {
     override func accessibilityRole() -> NSAccessibility.Role? {
         /// We use .textArea because the terminal surface is essentially an editable text area
         /// where users can input commands and view output.
-        return .textArea
+        let role: NSAccessibility.Role = .textArea
+        if NSApp.isFullKeyboardAccessEnabled {
+            traceInput("accessibilityRole result=\(role.rawValue)")
+        }
+        return role
     }
 
     override func accessibilityHelp() -> String? {
