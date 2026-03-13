@@ -218,6 +218,8 @@ extension Ghostty {
         var notificationIdentifiers: Set<String> = []
 
         private var markedText: NSMutableAttributedString
+        private var markedTextSelectionRange: NSRange = NSRange(location: NSNotFound, length: 0)
+        private var markedTextDocumentLocation: Int?
         private(set) var focused: Bool = true
         private var prevPressureStage: Int = 0
         private var appearanceObserver: NSKeyValueObservation?
@@ -1945,6 +1947,15 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         cachedScreenContents.get().count
     }
 
+    private func bestEffortInsertionLocation() -> Int {
+        let selection = selectedRange()
+        if selection.location != NSNotFound {
+            return selection.location + selection.length
+        }
+
+        return accessibilityInsertionRange().location
+    }
+
     private func intersectedDocumentRange(_ proposedRange: NSRange) -> NSRange? {
         guard proposedRange.location != NSNotFound else { return nil }
 
@@ -1963,16 +1974,35 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         return adjustedRange
     }
 
+    private func clampedMarkedSelectionRange(_ range: NSRange, markedLength: Int) -> NSRange {
+        let location = min(max(range.location, 0), markedLength)
+        let maxLength = max(markedLength - location, 0)
+        let length = min(max(range.length, 0), maxLength)
+        return NSRange(location: location, length: length)
+    }
+
+    private func currentMarkedDocumentRange() -> NSRange {
+        guard markedText.length > 0 else { return NSRange(location: NSNotFound, length: 0) }
+        let baseLocation = markedTextDocumentLocation ?? bestEffortInsertionLocation()
+        let clampedLocation = min(max(baseLocation, 0), documentTextLength())
+        return NSRange(location: clampedLocation, length: markedText.length)
+    }
+
     func hasMarkedText() -> Bool {
         return markedText.length > 0
     }
 
     func markedRange() -> NSRange {
-        guard markedText.length > 0 else { return NSRange(location: NSNotFound, length: 0) }
-        return NSRange(0...(markedText.length-1))
+        currentMarkedDocumentRange()
     }
 
     func selectedRange() -> NSRange {
+        if hasMarkedText() {
+            let markedRange = currentMarkedDocumentRange()
+            let selection = clampedMarkedSelectionRange(markedTextSelectionRange, markedLength: markedText.length)
+            return NSRange(location: markedRange.location + selection.location, length: selection.length)
+        }
+
         guard let surface = self.surface else {
             return NSRange(location: NSNotFound, length: 0)
         }
@@ -1995,6 +2025,9 @@ extension Ghostty.SurfaceView: NSTextInputClient {
     }
 
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        let hadMarkedText = hasMarkedText()
+        let markedRangeBefore = currentMarkedDocumentRange()
+
         switch string {
         case let v as NSAttributedString:
             self.markedText = NSMutableAttributedString(attributedString: v)
@@ -2005,6 +2038,15 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         default:
             print("unknown marked text: \(string)")
         }
+
+        if hadMarkedText, markedRangeBefore.location != NSNotFound {
+            markedTextDocumentLocation = markedRangeBefore.location
+        } else if replacementRange.location != NSNotFound {
+            markedTextDocumentLocation = min(max(replacementRange.location, 0), documentTextLength())
+        } else {
+            markedTextDocumentLocation = bestEffortInsertionLocation()
+        }
+        markedTextSelectionRange = clampedMarkedSelectionRange(selectedRange, markedLength: markedText.length)
 
         // If we're not in a keyDown event, then we want to update our preedit
         // text immediately. This can happen due to external events, for example
@@ -2018,6 +2060,8 @@ extension Ghostty.SurfaceView: NSTextInputClient {
     func unmarkText() {
         if self.markedText.length > 0 {
             self.markedText.mutableString.setString("")
+            markedTextSelectionRange = NSRange(location: NSNotFound, length: 0)
+            markedTextDocumentLocation = nil
             syncPreedit()
         }
     }

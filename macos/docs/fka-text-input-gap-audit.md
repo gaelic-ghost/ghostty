@@ -40,6 +40,12 @@ The first contained contract-repair pass now does the following:
 
 - `selectedRange()` returns `{NSNotFound, 0}` when there is no terminal selection
 - `markedRange()` returns `{NSNotFound, 0}` when there is no marked text
+- `markedRange()` now reports a document-relative range for the current marked text instead
+  of treating marked text as if it always lived at document offset `0`
+- `selectedRange()` now reports the selected subrange inside marked text in document
+  coordinates when composition is active
+- `setMarkedText(_:selectedRange:replacementRange:)` now tracks the marked-text document
+  location and selected subrange instead of discarding both range parameters entirely
 - `attributedSubstring(forProposedRange:actualRange:)` intersects the requested range with
   the document range instead of always returning the current selection
 - `attributedSubstring(forProposedRange:actualRange:)` now reports `actualRange` when the
@@ -126,8 +132,10 @@ replace and what subrange should remain selected inside marked text.
 Ghostty currently ignores important parts of that contract:
 
 - `setMarkedText(_:selectedRange:replacementRange:)` accepts both `selectedRange` and
-  `replacementRange`, but the current implementation only stores the string and syncs
-  preedit state. It does not appear to use either range parameter.
+  `replacementRange`, but the older implementation only stored the string and synced
+  preedit state. It did not use either range parameter. The current branch now partially
+  repairs this by tracking the marked-text document location and selected subrange, but it
+  still does not model full document replacement semantics.
 - `insertText(_:replacementRange:)` accepts a `replacementRange`, but the current
   implementation ignores it and forwards only the inserted string to the terminal model.
 
@@ -171,7 +179,9 @@ relevant notifications when their accessible state changes.
 
 ### Highest-risk semantic mismatches seen so far
 
-- replacement and selected-subrange instructions from AppKit being ignored
+- `insertText(_:replacementRange:)` still ignores replacement instructions from AppKit
+- `setMarkedText(_:selectedRange:replacementRange:)` is improved, but still only partially
+  models AppKit's replacement semantics
 - placement and visibility hooks from Apple's custom text-view path still missing
 - no `NSTextInsertionIndicator` integration
 
