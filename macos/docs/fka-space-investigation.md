@@ -258,6 +258,55 @@ This is now one of the strongest remaining semantic gaps in the focused-child ex
 
 ### 10e. The fallback now looks more text-like than before
 
+The latest prompt-local tightening changed the failure shape again in a useful way.
+
+The focused prompt child no longer needs to pretend that uncertain cursor-row text is a
+real editable prompt value. When Ghostty cannot derive a trustworthy prompt-local span, the
+embedded fallback now exposes a cursor-only insertion target instead of a non-empty row
+string. In tracing, this now appears as:
+
+- `prompt snapshot path=cursor-insertion`
+- `text_len=0`
+- `valueLength=0`
+- `selectedTextRange={0, 0}`
+
+This matters because it stopped the older behavior where Full Keyboard Access could latch
+onto the prompt marker itself as the editable target. The latest repro no longer reselects
+the marker and no longer shifts left toward the row origin.
+
+### 10f. The remaining bug now looks split between live cursor updates and stale focus geometry
+
+The latest repros suggest Ghostty is now driving two different AppKit-facing concepts with
+different freshness:
+
+- the system insertion indicator, which is updated from Ghostty's live cursor path
+- the focused accessibility element frame, which Full Keyboard Access appears to use for the
+  focus ring
+
+Observed behavior:
+
+- while typing, the system insertion indicator follows the terminal cursor, but stays one row
+  too low
+- after `cmd-tab` back into Ghostty, the system insertion indicator realigns beneath the real
+  terminal cursor
+- the Full Keyboard Access focus ring stays stuck at the older prompt-frame location instead
+  of moving with the live insertion point
+
+Apple's accessibility model makes this plausible. `NSAccessibilityElementProtocol` treats the
+element frame as part of the accessibility contract, and `NSAccessibilityProtocol` treats the
+focused UI element and its focus state as distinct properties. In practice, that means Ghostty
+can now have a better live insertion-indicator path while still failing to refresh the focused
+accessibility element's frame aggressively enough for Full Keyboard Access.
+
+The strongest current hypothesis is therefore narrower than before:
+
+- the prompt child frame is still using stale or lagging `y` geometry after focus is
+  established
+- AppKit is continuing to use that stale frame for the focus ring and some activation logic
+- the remaining failure is no longer primarily about missing text-accessibility methods, but
+  about keeping the focused element's accessibility frame synchronized with the live cursor
+  geometry and notifying AppKit when that frame changes
+
 With the richer child text attributes in place, the observed failure changed again:
 
 - the extra visible system cursor can disappear, leaving only Ghostty's rendered cursor

@@ -682,3 +682,35 @@ This cleanup pass still intentionally does not expose `setAccessibilityValue(_:)
 editable backing-store semantics. Ghostty still does not honestly own a normal writable text
 document the way `NSTextView` does, so pretending otherwise would be a worse mismatch than
 leaving that setter unavailable.
+
+## New Geometry Finding
+
+The latest focused-prompt repros suggest the remaining bug is no longer dominated by missing
+methods or obviously missing notifications. The stronger split now is between:
+
+- the system insertion indicator path, which follows Ghostty's live cursor updates more
+  closely
+- the accessibility frame for the focused prompt element, which still appears to lag and can
+  leave the Full Keyboard Access focus ring stuck at an older location
+
+This lines up with AppKit's documented accessibility model:
+
+- `NSAccessibilityElementProtocol.accessibilityFrame()` describes the element's frame in
+  screen coordinates
+- `NSAccessibilityProtocol` treats the focused UI element and its focus state as explicit
+  accessibility properties
+
+So even with better prompt-local text semantics, Ghostty can still fail Full Keyboard Access
+if the focused prompt element's frame is not kept synchronized with the live insertion point
+and if AppKit is not notified when that focused element's geometry changes.
+
+The latest cursor-only fallback improved the semantic side of this:
+
+- uncertain prompt extraction no longer exposes prompt-marker or row-origin text as the
+  editable value
+- the prompt child now falls back to a zero-length cursor insertion target instead of a fake
+  row text field
+- this removed the older left-shifted prompt-marker selection behavior
+
+The remaining gap now looks more like focused-element frame staleness than broad text-surface
+incompleteness.
