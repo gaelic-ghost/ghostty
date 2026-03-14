@@ -39,8 +39,12 @@ extension Ghostty {
             "Editable terminal prompt"
         }
 
+        func syncFrameInParentSpace(_ frame: NSRect) {
+            setAccessibilityFrameInParentSpace(frame.integral)
+        }
+
         override func accessibilityFrameInParentSpace() -> NSRect {
-            let frame = surfaceView?.promptAccessibilityFrameInParentSpace() ?? .zero
+            let frame = super.accessibilityFrameInParentSpace()
             surfaceView?.tracePromptAccessibility("frameInParentSpace=\(NSStringFromRect(frame))")
             return frame
         }

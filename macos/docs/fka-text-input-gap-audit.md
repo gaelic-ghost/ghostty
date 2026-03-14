@@ -117,6 +117,10 @@ The first contained contract-repair pass now does the following:
   reduces left-shifted prompt targeting when semantic input tagging is absent
 - prompt-local frame geometry now uses the prompt-local viewport origin from the embedded
   text API instead of deriving every focused-child frame from the IME cursor rect alone
+- prompt-child frame synchronization now treats frame-in-parent-space as explicit
+  accessibility state and posts stronger geometry notifications when that frame changes,
+  but this still was not enough to make Full Keyboard Access treat the child as an
+  insertion target instead of a bounded activatable field
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -257,6 +261,13 @@ relevant notifications when their accessible state changes.
 - the focused prompt child still intentionally does not expose `setAccessibilityValue(_:)`
   or broad writable text replacement semantics, because Ghostty still does not own a
   truthful prompt-local backing store the way `NSTextView` does
+- the focused prompt child experiment now appears to be nudging AppKit toward text-field
+  activation semantics instead of reducing them, so the active runtime path is being
+  pivoted back toward the cleaned-up parent `AXTextArea` for the next comparison
+- first-focus prompt geometry is still timing-sensitive when Ghostty reports
+  `cursor-not-at-prompt`, but the one-row-low bug itself turned out to be a host-side
+  conversion mistake: `Surface.imePoint()` reports the bottom edge of the active cell, and
+  the AppKit host had been subtracting an extra cell height as though it were the top edge
 
 ## Hook Audit Findings
 
@@ -714,3 +725,109 @@ The latest cursor-only fallback improved the semantic side of this:
 
 The remaining gap now looks more like focused-element frame staleness than broad text-surface
 incompleteness.
+
+## AppKit / NSAccessibility Audit Checkpoint
+
+Apple's current guidance still points to four separate responsibilities for a custom AppKit
+text surface:
+
+- expose stable informational properties through `NSAccessibilityProtocol`
+- expose writable setters only for state the control actually owns
+- post notifications when dynamic state changes
+- implement the custom `NSView + NSTextInputClient` placement and insertion-point contract
+
+Relevant references:
+
+- `NSAccessibilityProtocol` overview and customization rules:
+  <https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol>
+- `NSAccessibilityProtocol: Customizing User Interface Elements`:
+  <https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol#Customizing-User-Interface-Elements>
+- `NSAccessibilityProtocol: Setting the focus`:
+  <https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol#Setting-the-focus>
+- `NSAccessibilityProtocol: Managing notifications`:
+  <https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol#Managing-notifications>
+- `Custom Controls`:
+  <https://developer.apple.com/documentation/appkit/custom-controls>
+- `NSTextInputClient`:
+  <https://developer.apple.com/documentation/appkit/nstextinputclient>
+
+### What Ghostty now covers reasonably well
+
+- `NSTextInputClient` empty-range sentinels are repaired for `selectedRange()` and
+  `markedRange()`.
+- `attributedSubstring(forProposedRange:actualRange:)` now intersects and reports
+  `actualRange` instead of returning arbitrary selection text.
+- `setMarkedText` and `insertText` are now state-based and only honor replacement semantics
+  in terms Ghostty actually owns.
+- `documentVisibleRect`, `unionRectInVisibleSelectedRange`, `preferredTextAccessoryPlacement`,
+  and `windowLevel()` now exist.
+- `NSTextInsertionIndicator` integration exists and is gated to the FKA path.
+- accessibility selection, layout, and marking notifications are much more complete than
+  they were at the start of the investigation.
+- the macOS host now has a real core-to-host `selection_changed` action instead of having
+  to guess every selection mutation from the view layer.
+
+### What is still partial or risky
+
+- `setAccessibilityValue(_:)` is still unavailable, intentionally. Apple allows writable
+  setters only when the control really owns that state, and Ghostty still does not own a
+  normal editable backing store the way `NSTextView` does.
+- output-driven `valueChanged` remains intentionally conservative. That avoids noisy
+  accessibility churn, but it also means Ghostty still lacks a precise semantic "text value
+  changed" signal for the live prompt context.
+- prompt-local extraction is still timing-sensitive and can still start empty on first focus
+  before later semantic data arrives.
+- the focused prompt frame and the system insertion indicator can still diverge, meaning the
+  live insertion point and the focused accessibility element are not always moving together.
+- the prompt-child experiment demonstrated that richer text attributes alone are not enough
+  to stop Full Keyboard Access from falling back to activation.
+
+### What still looks mixed or unclear
+
+- Parent-only `AXTextArea` behavior still produces the original whole-surface center-click
+  fallback.
+- Focused-child `AXTextField` behavior narrows the activation target, but still produces
+  click-like behavior into the field bounds instead of plain insertion.
+- That means Ghostty can now influence the target shape without yet changing AppKit's
+  deeper routing decision.
+- `isAccessibilitySelectorAllowed(_:)` is no longer obviously lying, but denying
+  `accessibilityPerformPress` and `accessibilityPerformPick` still does not stop AppKit from
+  synthesizing mouse activation.
+- The biggest remaining mixed signal is probably that Ghostty's focused editable target is
+  still not presented as both stable and writable enough, quickly enough, for Full Keyboard
+  Access to trust insertion over activation.
+
+### Event-handling influences still worth keeping in mind
+
+The broad event-path tracing already established that the synthetic click fallback appears:
+
+- in the app-level local monitor
+- in the surface-local mouse monitor
+- in terminal window `sendEvent(_:)`
+- in `SurfaceView.mouseDown` / `mouseUp`
+
+That means the host now receives the fallback after AppKit has already chosen it. So the
+remaining event-handling work should focus on signals that influence AppKit *before* that
+choice is made:
+
+- focused element identity
+- element frame freshness
+- writable-text semantics
+- selector allowance
+- notification timing
+
+### Practical conclusion from this checkpoint
+
+We are no longer in the phase where "some missing getter" is the most likely answer.
+
+The remaining likely causes are tighter and more coupled:
+
+- stale or late focused-element geometry
+- still-insufficient writable text semantics for the active prompt target
+- prompt-local state that is not available early enough on first focus
+- AppKit policy that still classifies Ghostty's focused target as safer to activate than to
+  insert into
+
+That is why the next pass should stay audit-driven and compare Ghostty's current focused
+text surface against AppKit's documented expectations very explicitly, instead of adding
+more speculative layers.

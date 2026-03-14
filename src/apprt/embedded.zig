@@ -1651,7 +1651,7 @@ pub const CAPI = struct {
         if (readSemanticInputSpanLocked(core_surface, screen, cursor_pin, result)) return true;
         if (readPromptZoneLocked(core_surface, screen, cursor_pin, result)) return true;
         if (readPromptInputRowLocked(core_surface, cursor_pin, result)) return true;
-        return readCursorRowFallbackLocked(core_surface, cursor_pin, result);
+        return readCursorRowFallbackLocked(cursor_pin, result);
     }
 
     fn readSemanticInputSpanLocked(
@@ -1895,7 +1895,6 @@ pub const CAPI = struct {
     }
 
     fn readCursorRowFallbackLocked(
-        core_surface: *CoreSurface,
         cursor_pin: terminal.PageList.Pin,
         result: *Text,
     ) bool {
@@ -1935,58 +1934,17 @@ pub const CAPI = struct {
             break :origin 0;
         };
 
-        var start_pin = cursor_pin;
-        start_pin.x = origin_x;
-        var end_pin = cursor_pin;
-        end_pin.x = @intCast(cells.len - 1);
-
-        const row_sel = terminal.Selection.init(start_pin, end_pin, false);
-        const row_text = core_surface.dumpTextLocked(global.alloc, row_sel) catch |err| {
-            log.warn("error reading prompt cursor row text err={}", .{err});
-            return false;
-        };
-        defer global.alloc.free(row_text.text);
-
-        const trimmed_text = std.mem.trimRight(u8, row_text.text, &std.ascii.whitespace);
-
-        const cursor_offset_chars: usize = cursor_offset: {
-            if (cursor_pin.x <= origin_x) break :cursor_offset 0;
-
-            var cursor_end_pin = cursor_pin;
-            cursor_end_pin.x -= 1;
-            const cursor_sel = terminal.Selection.init(start_pin, cursor_end_pin, false);
-            const cursor_text = core_surface.dumpTextLocked(global.alloc, cursor_sel) catch |err| {
-                log.warn("error reading prompt cursor row offset err={}", .{err});
-                break :cursor_offset @intCast(cursor_pin.x - origin_x);
-            };
-            defer global.alloc.free(cursor_text.text);
-            break :cursor_offset cursor_text.text.len;
-        };
-
-        const text_copy = global.alloc.allocSentinel(u8, trimmed_text.len, 0) catch |err| {
-            log.warn("error allocating prompt cursor row text err={}", .{err});
-            return false;
-        };
-        @memcpy(text_copy[0..trimmed_text.len], trimmed_text);
-
-        const vp: CoreSurface.Text.Viewport = row_text.viewport orelse .{
+        result.* = .{
             .tl_px_x = -1,
             .tl_px_y = -1,
             .offset_start = 0,
             .offset_len = 0,
-        };
-
-        result.* = .{
-            .tl_px_x = vp.tl_px_x,
-            .tl_px_y = vp.tl_px_y,
-            .offset_start = @intCast(@min(cursor_offset_chars, trimmed_text.len)),
-            .offset_len = 0,
-            .text = text_copy.ptr,
-            .text_len = trimmed_text.len,
+            .text = null,
+            .text_len = 0,
         };
 
         std.debug.print(
-            "prompt snapshot path=cursor-row text_len={} offset_start={} cursor=({}, {}) origin_x={} row_semantic_prompt={} cursor_semantic={}\n",
+            "prompt snapshot path=cursor-insertion text_len={} offset_start={} cursor=({}, {}) origin_x={} row_semantic_prompt={} cursor_semantic={}\n",
             .{
                 result.text_len,
                 result.offset_start,

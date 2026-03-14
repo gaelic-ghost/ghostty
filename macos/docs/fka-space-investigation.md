@@ -218,6 +218,36 @@ terminal surface as the focused target. However, it did **not** fix the bug by i
 - `Space` still does not reach `keyDown`, `insertText`, or `doCommand(by:)`
 - synthetic mouse activation still occurs, but now at the prompt child location
 
+### 10c. Focused-child experiment now looks more distorting than helpful
+
+After tightening the child's text methods, frame updates, writable selected-range setters,
+and prompt-local extraction, the experiment produced two useful findings:
+
+- the child can eventually converge onto the correct prompt row and expand to the latest
+  prompt width after refocus
+- but `Space` still behaves like activation against the focused field bounds, selecting
+  text or moving the insertion point toward the middle of the field instead of inserting
+  at the live terminal cursor
+
+In practice, the child path now appears to be biasing AppKit toward bounded text-field
+activation semantics. That is especially notable because Accessibility Inspector shows
+that iTerm2 works as a single `AXTextArea` with no prompt child at all.
+
+The current plan is therefore to disable the prompt-child experiment as the active runtime
+path and compare behavior again with the cleaned-up single-surface `AXTextArea` model.
+
+### 10d. The y-coordinate bug was a real conversion error
+
+One major geometry mismatch turned out not to be mysterious timing after all. Ghostty's
+`Surface.imePoint()` reports the IME `y` coordinate at the **bottom** of the active cell,
+not the top. The AppKit host was subtracting a cell height as though that `y` were a
+top-edge coordinate, which pushed both the system insertion indicator and the focused
+prompt frame one row too low.
+
+That conversion is now corrected in the host-side AppKit path. The remaining first-focus
+geometry weirdness is now more about when prompt state becomes available than about the
+meaning of the IME point itself.
+
 The focused child therefore looks more like a useful diagnostic narrowing step than a
 proven final architecture.
 
@@ -549,3 +579,37 @@ probing this bug.
   <https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol>
 - `Inspecting the accessibility of screens`:
   <https://developer.apple.com/documentation/accessibility/inspecting-the-accessibility-of-screens>
+
+## March 13 Late-Night Checkpoint
+
+The latest comparison run made one thing very clear: the focused-prompt child experiment
+changed the target shape, but it never changed the fundamental routing decision.
+
+- With the focused `AXTextField` child active, Full Keyboard Access narrowed its synthetic
+  activation to the prompt field bounds and eventually treated the field like a bounded text
+  target, but `Space` still behaved like activation into the field instead of plain text
+  insertion.
+- With the child disabled and the parent `SurfaceView` restored as the only focused
+  `AXTextArea`, Full Keyboard Access immediately regressed to the original whole-surface
+  ring and center-click behavior at approximately `(292.5, 332.0)`.
+
+That gives us a useful split:
+
+1. The child experiment can influence where Full Keyboard Access aims.
+2. The child experiment does not, by itself, make AppKit treat Ghostty like a trustworthy
+   text-entry target.
+3. The parent-only model still reproduces the original fallback exactly, so the remaining
+   bug is not simply "the child layer is wrong" or "the parent layer is missing a single
+   text method."
+
+The strongest current theory is now narrower:
+
+- Ghostty is still exposing either mixed, ambiguous, or stale signals about the focused
+  editable target.
+- Full Keyboard Access still decides that activation is safer than direct insertion.
+- The remaining failure is likely at the boundary between focused-element shape, writable
+  text semantics, geometry freshness, and notification timing, not merely a missing getter.
+
+This is a good checkpoint for switching from broad experimentation back to a stricter audit
+of which AppKit/NSAccessibility expectations Ghostty now satisfies cleanly, which ones are
+still partial, and which ones are likely still sending mixed signals.

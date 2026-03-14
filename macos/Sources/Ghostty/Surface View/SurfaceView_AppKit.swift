@@ -265,6 +265,7 @@ extension Ghostty {
         }
 
         private var lastPromptAccessibilitySnapshot: PromptAccessibilitySnapshot?
+        private var lastPromptAccessibilityElementFrame: NSRect?
 
         private func invalidatePromptAccessibilitySnapshot() {
             lastPromptAccessibilitySnapshot = nil
@@ -510,10 +511,11 @@ extension Ghostty {
                     self.notificationIdentifiers = []
                 }
 
-                refreshPromptAccessibilityState()
+                refreshPromptAccessibilityState(notifyIfChanged: true)
             }
 
             updateSystemTextInsertionIndicator()
+            syncPromptAccessibilityElementFrame(notifyIfChanged: true, force: focused)
             NSAccessibility.post(element: self, notification: .focusedUIElementChanged)
             if let promptElement = focusedPromptAccessibilityElement() {
                 NSAccessibility.post(element: promptElement, notification: .focusedUIElementChanged)
@@ -584,7 +586,7 @@ extension Ghostty {
             let cursorWidth = CGFloat(max(width, 0))
             let cursorHeight = max(CGFloat(height), cellSize.height)
             let left = CGFloat(x) - (cellSize.width / 2)
-            let bottom = bounds.height - CGFloat(y) - cursorHeight
+            let bottom = frame.size.height - CGFloat(y)
 
             return NSRect(
                 x: left,
@@ -615,24 +617,27 @@ extension Ghostty {
             }
 
             let cursorFrame = currentPromptCursorFrameInView()
+            let editableStartOffset = min(Int(text.offset_len), value.count)
             let promptFrameInView: NSRect = {
-                guard text.tl_px_x >= 0 else { return cursorFrame }
+                let baseOriginX = text.tl_px_x >= 0 ? CGFloat(text.tl_px_x) : cursorFrame.minX
+                let editableOriginX = baseOriginX + CGFloat(editableStartOffset) * cellSize.width
+                let fieldOriginX = min(editableOriginX, cursorFrame.minX)
+                let editableWidth = CGFloat(max(value.count - editableStartOffset, 0)) * cellSize.width
+                let liveCursorWidth = max(cursorFrame.maxX - fieldOriginX, 0)
+                let fieldWidth = max(max(editableWidth, liveCursorWidth), max(cellSize.width, 1))
 
-                var frame = cursorFrame
-                frame.origin.x = CGFloat(text.tl_px_x)
-                if frame.width <= 0 {
-                    frame.size.width = max(cellSize.width, 1)
-                }
-                if frame.height <= 0 {
-                    frame.size.height = max(cellSize.height, 1)
-                }
-                return frame.integral
+                return NSRect(
+                    x: fieldOriginX,
+                    y: cursorFrame.minY,
+                    width: fieldWidth,
+                    height: max(cursorFrame.height, cellSize.height)
+                ).integral
             }()
 
             let snapshot = PromptAccessibilitySnapshot(
                 text: value,
                 cursorOffset: min(Int(text.offset_start), value.count),
-                editableStartOffset: min(Int(text.offset_len), value.count),
+                editableStartOffset: editableStartOffset,
                 cursorFrameInView: cursorFrame,
                 promptFrameInView: promptFrameInView
             )
@@ -693,6 +698,39 @@ extension Ghostty {
             }
         }
 
+        private func syncPromptAccessibilityElementFrame(
+            notifyIfChanged: Bool = false,
+            force: Bool = false
+        ) {
+            guard let promptElement = focusedPromptAccessibilityElement() else {
+                lastPromptAccessibilityElementFrame = nil
+                return
+            }
+
+            let frame = promptAccessibilityFrameInParentSpace().integral
+            let previousFrame = lastPromptAccessibilityElementFrame
+            guard force || previousFrame != frame else { return }
+
+            promptElement.syncFrameInParentSpace(frame)
+            lastPromptAccessibilityElementFrame = frame
+
+            guard notifyIfChanged else { return }
+
+            if let previousFrame, previousFrame.origin != frame.origin {
+                NSAccessibility.post(element: promptElement, notification: .moved)
+            }
+            if let previousFrame, previousFrame.size != frame.size {
+                NSAccessibility.post(element: promptElement, notification: .resized)
+            }
+            NSAccessibility.post(element: promptElement, notification: .focusedUIElementChanged)
+
+            NSAccessibility.post(
+                element: self,
+                notification: .layoutChanged,
+                userInfo: [.uiElements: [self, promptElement]]
+            )
+        }
+
         func refreshPromptAccessibilityState(notifyIfChanged: Bool = false) {
             let previousSnapshot = hasFocusedPromptAccessibilityElement ? lastPromptAccessibilitySnapshot : nil
             invalidatePromptAccessibilitySnapshot()
@@ -700,6 +738,7 @@ extension Ghostty {
             if notifyIfChanged {
                 postPromptAccessibilityChanges(from: previousSnapshot, to: currentSnapshot)
             }
+            syncPromptAccessibilityElementFrame(notifyIfChanged: notifyIfChanged, force: currentSnapshot != nil)
             updateSystemTextInsertionIndicator()
         }
 
@@ -708,13 +747,9 @@ extension Ghostty {
             return NSRange(location: content.count, length: 0)
         }
 
-        var hasFocusedPromptAccessibilityElement: Bool {
-            NSApp.isFullKeyboardAccessEnabled && focused && window?.firstResponder === self
-        }
+        var hasFocusedPromptAccessibilityElement: Bool { false }
 
-        func focusedPromptAccessibilityElement() -> TerminalPromptAccessibilityElement? {
-            hasFocusedPromptAccessibilityElement ? promptAccessibilityElement : nil
-        }
+        func focusedPromptAccessibilityElement() -> TerminalPromptAccessibilityElement? { nil }
 
         private func accessibilityVisibleRange(fullContent: String, visibleContent: String) -> NSRange {
             guard !fullContent.isEmpty else { return NSRange(location: 0, length: 0) }
@@ -1181,6 +1216,7 @@ extension Ghostty {
             let indicator = ensureTextInsertionIndicator()
             indicator.frame = currentTextInsertionIndicatorFrame()
             indicator.displayMode = focused && window?.firstResponder === self ? .automatic : .hidden
+            syncPromptAccessibilityElementFrame(notifyIfChanged: true)
         }
 
         func refreshSystemTextInsertionIndicator() {
@@ -2852,6 +2888,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
         }
         let adjustedRange = intersectedDocumentRange(range) ?? NSRange(location: documentTextLength(), length: 0)
         actualRange?.pointee = adjustedRange
+        var usesImePoint = true
 
         // Ghostty will tell us where it thinks an IME keyboard should render.
         var x: Double = 0
@@ -2867,6 +2904,7 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             // QuickLook
             var text = ghostty_text_s()
             if ghostty_surface_read_selection(surface, &text) {
+                usesImePoint = false
                 // The -2/+2 here is subjective. QuickLook seems to offset the rectangle
                 // a bit and I think these small adjustments make it look more natural.
                 x = text.tl_px_x - 2
@@ -2887,14 +2925,21 @@ extension Ghostty.SurfaceView: NSTextInputClient {
             width = 0
             x += cellSize.width * Double(adjustedRange.location + adjustedRange.length)
         }
-        // Ghostty coordinates are in top-left (0, 0) so we have to convert to
-        // bottom-left since that is what UIKit expects
+        // Ghostty selection rectangles are reported from the top-left, but IME
+        // points are reported at the bottom edge of the active cell.
+        let viewY = if usesImePoint {
+            frame.size.height - y
+        } else {
+            frame.size.height - y - max(height, cellSize.height)
+        }
+
+        // Convert to view coordinates for AppKit.
         // when there's is no characters selected,
         // width should be 0 so that dictation indicator
         // can start in the right place
         let viewRect = NSRect(
             x: x,
-            y: frame.size.height - y - max(height, cellSize.height),
+            y: viewY,
             width: width,
             height: max(height, cellSize.height))
 
@@ -3198,10 +3243,6 @@ extension Ghostty.SurfaceView {
      }
 
     override func isAccessibilityEnabled() -> Bool {
-        if focusedPromptAccessibilityElement() != nil {
-            return false
-        }
-
         let enabled = focused && window?.firstResponder === self
             ? true
             : super.isAccessibilityEnabled()
@@ -3209,7 +3250,6 @@ extension Ghostty.SurfaceView {
     }
 
     override func isAccessibilityFocused() -> Bool {
-        guard focusedPromptAccessibilityElement() == nil else { return false }
         return focused && window?.firstResponder === self
     }
 
@@ -3218,22 +3258,6 @@ extension Ghostty.SurfaceView {
             "setAccessibilityFocused requested=\(accessibilityFocused) currentlyFocused=\(focused) windowFirstResponderMatches=\(window?.firstResponder === self)"
         )
         super.setAccessibilityFocused(accessibilityFocused)
-    }
-
-    override func accessibilitySharedFocusElements() -> [Any]? {
-        if let promptElement = focusedPromptAccessibilityElement() {
-            return [promptElement]
-        }
-        let shared = super.accessibilitySharedFocusElements()
-        return shared
-    }
-
-    override var accessibilityFocusedUIElement: Any? {
-        if let promptElement = focusedPromptAccessibilityElement() {
-            return promptElement
-        }
-
-        return super.accessibilityFocusedUIElement
     }
 
         override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
@@ -3252,13 +3276,6 @@ extension Ghostty.SurfaceView {
             )
         }
         return allowed
-    }
-
-    override func accessibilityChildren() -> [Any]? {
-        if let promptElement = focusedPromptAccessibilityElement() {
-            return [promptElement]
-        }
-        return super.accessibilityChildren()
     }
 
     /// Defines the accessibility role for this view, which helps assistive technologies
@@ -3451,13 +3468,6 @@ extension Ghostty.SurfaceView {
         let windowRect = convert(localRect, to: nil)
         guard let window else { return windowRect }
         return window.convertToScreen(windowRect)
-    }
-
-    override func accessibilitySharedTextUIElements() -> [Any]? {
-        if let promptElement = focusedPromptAccessibilityElement() {
-            return [promptElement]
-        }
-        return super.accessibilitySharedTextUIElements()
     }
 
 }
