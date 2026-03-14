@@ -100,6 +100,10 @@ The first contained contract-repair pass now does the following:
 - host-owned `copy(_:)` now also posts `selectedTextChanged` when the core clears selection
   as part of `selection_clear_on_copy`, so that AppKit is not left with a stale selected-text
   state after copy-triggered selection clears
+- the focused prompt accessibility child now explicitly allows
+  `setAccessibilitySelectedTextRange(_:)` and `setAccessibilitySelectedTextRanges(_:)`, and
+  maps those setters onto Ghostty's real writable local state only: active marked-text
+  selection, plus a narrow insertion-adjacent no-op path when there is no marked text
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -251,6 +255,54 @@ relevant notifications when their accessible state changes.
 - `BaseTerminalController` is a useful observer for focus and aggregate window state, but its
   published values and notification handlers are mostly about window title, bell state, split
   focus, and UI containment. They are not hidden text-model hooks.
+
+## Focused Prompt Child Follow-Up
+
+### What the child experiment established
+
+The focused-child experiment was useful as a diagnostic even though it is still an
+architectural risk. New layers are often unnecessary and easy to get wrong, so this one
+should still be treated as provisional.
+
+The experiment established three important things:
+
+- AppKit is willing to focus a prompt-local child accessibility element instead of only the
+  outer `SurfaceView`
+- AppKit does query rich text attributes from that child, including selection, visible
+  range, insertion line number, and frame data
+- the bad Full Keyboard Access `Space` path now looks more text-like than before, with a
+  transient phantom insertion point instead of only the old center-window synthetic click
+
+### What the child still does not provide honestly
+
+The focused child still has a major semantic limitation: it does not own a real prompt-only
+backing string. Right now it delegates most of its text getters back to the parent surface,
+which still fundamentally models the whole terminal buffer rather than a small editable
+prompt buffer.
+
+That means `setAccessibilityValue(_:)` is not yet safe to expose honestly on the child.
+Apple's docs make writable setters meaningful, but Ghostty still does not have a truthful
+way to treat the entire terminal transcript as an editable text field value.
+
+### Next narrow writable target
+
+The more grounded writable target is `setAccessibilitySelectedTextRange(_:)`, because
+Ghostty already owns local state for:
+
+- active marked text
+- marked-text subrange selection
+- a best-effort insertion point
+
+That setter experiment is now in place. It deliberately stays narrow:
+
+- if marked text is active, the setter can update the marked-text-relative selection
+- if there is no marked text, only insertion-adjacent zero-length requests are accepted, and
+  even then only as a harmless local sync point rather than as a fake terminal-document edit
+- unsupported ranges are logged and ignored
+
+`setAccessibilityValue(_:)` remains intentionally read-only for now, because the child still
+does not own an honest prompt-local backing string and Ghostty still should not pretend that
+the entire terminal transcript is a writable text field value.
 
 ### Hooks that looked promising but are mostly UI-only
 

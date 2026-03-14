@@ -201,6 +201,89 @@ The intended shape is deliberately small:
   Full Keyboard Access is active and the surface is the first responder
 - route app-level focused-element lookups back to the owning `SurfaceView` when needed
 
+### 10b. Focused-child experiment changed the target, but not the final routing
+
+The focused-child experiment materially changed what AppKit appears to focus:
+
+- the app-level focused accessibility element now resolves to
+  `TerminalPromptAccessibilityElement`
+- that child reports `AXTextField`, enabled `true`, focused `true`, and parent
+  `SurfaceView`
+- the synthetic activation point moved from the middle of the Ghostty window to the prompt
+  location near the insertion indicator
+
+This is meaningful progress because it proves AppKit is no longer just treating the whole
+terminal surface as the focused target. However, it did **not** fix the bug by itself:
+
+- `Space` still does not reach `keyDown`, `insertText`, or `doCommand(by:)`
+- synthetic mouse activation still occurs, but now at the prompt child location
+
+The focused child therefore looks more like a useful diagnostic narrowing step than a
+proven final architecture.
+
+### 10c. AppKit is consulting rich text attributes on the focused child
+
+Additional prompt-focused tracing showed that AppKit is not ignoring the child's text
+surface. During the bad `Space` path, it queries the child for text-oriented attributes
+such as:
+
+- role and frame
+- number of characters
+- selected text and selected text range
+- selected text ranges
+- shared character range
+- visible character range
+- insertion point line number
+- placeholder value
+- shared text UI elements
+- top-level UI element
+
+This matters because it rules out an earlier suspicion that the child lacked enough basic
+text-element information to be treated as text. AppKit is already reading those
+attributes.
+
+### 10d. Writable accessibility setters are still missing on the focused child
+
+The same child-focused trace showed a different, more interesting gap:
+
+- `setAccessibilitySelectedTextRange:` was queried and not allowed
+- `setAccessibilityValue:` was queried and not allowed
+
+Apple's `NSAccessibilityProtocol` docs say that overriding a setter gives assistive apps
+write access to that property. So by the time of this trace, Ghostty's focused prompt
+element still looked text-like enough for AppKit to ask about writable text access, but it
+did not yet expose writable selection or value setters.
+
+This is now one of the strongest remaining semantic gaps in the focused-child experiment.
+
+### 10e. The fallback now looks more text-like than before
+
+The newest user-visible symptom is no longer just a synthetic click:
+
+- the system insertion cursor can appear at the prompt target instead of only the old
+  center-window fallback location
+- pressing `Space` can briefly show a phantom text cursor one space ahead of Ghostty's
+  rendered cursor
+- that apparent space then disappears instead of committing
+
+That behavior suggests AppKit may now be attempting a more text-like interaction and then
+failing to commit it, rather than staying entirely on a generic activation path. The
+remaining mismatch therefore looks more like incomplete writable text semantics than purely
+missing focus or frame information.
+
+### 10f. iTerm2 is an important counterexample
+
+Accessibility Inspector on a working iTerm2 window showed that iTerm's terminal surface is
+still exposed as a single `AXTextArea` with no child prompt element. The focused element is
+`PTYTextView`, with keyboard focus, selected text range, and visible character range
+present, but no separate `AXTextField` child.
+
+That is an important counterexample because it means a child prompt element is probably not
+something AppKit fundamentally requires in order to treat a terminal as editable text under
+Full Keyboard Access. The child experiment was still useful because it changed Ghostty's
+behavior in a measurable way, but the long-term fix may still belong in a richer single
+surface contract rather than a permanent extra accessibility layer.
+
 ### 11. Ghostty's local left-mouse focus monitor is not consuming the failing path
 
 Ghostty installs a local monitor on the terminal surface for `leftMouseDown` so it can

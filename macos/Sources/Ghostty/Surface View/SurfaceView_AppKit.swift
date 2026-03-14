@@ -516,6 +516,10 @@ extension Ghostty {
             print(logLine)
         }
 
+        func tracePromptAccessibility(_ message: String) {
+            traceInput("promptAX \(message)", event: nil)
+        }
+
         private func describeEvent(_ event: NSEvent?) -> String {
             guard let event else { return "event=nil" }
 
@@ -805,6 +809,71 @@ extension Ghostty {
             accessibilitySelectedText()
         }
 
+        func promptAccessibilitySelectedTextRanges() -> [NSValue]? {
+            [NSValue(range: promptAccessibilitySelectedTextRange())]
+        }
+
+        func setPromptAccessibilitySelectedTextRange(_ range: NSRange) {
+            let adjustedRange = intersectedDocumentRange(range) ?? accessibilityInsertionRange()
+            tracePromptAccessibility(
+                "setSelectedTextRange requested=\(NSStringFromRange(range)) adjusted=\(NSStringFromRange(adjustedRange))"
+            )
+
+            if hasMarkedText() {
+                let markedRange = currentMarkedDocumentRange()
+                let markedUpperBound = markedRange.location + markedRange.length
+                let adjustedUpperBound = adjustedRange.location + adjustedRange.length
+                guard adjustedRange.location >= markedRange.location,
+                      adjustedUpperBound <= markedUpperBound else {
+                    tracePromptAccessibility(
+                        "setSelectedTextRange ignored reason=outsideMarkedText markedRange=\(NSStringFromRange(markedRange))"
+                    )
+                    return
+                }
+
+                let localRange = NSRange(
+                    location: adjustedRange.location - markedRange.location,
+                    length: adjustedRange.length
+                )
+                let clampedRange = clampedMarkedSelectionRange(localRange, markedLength: markedText.length)
+                guard clampedRange != markedTextSelectionRange else { return }
+
+                markedTextSelectionRange = clampedRange
+                if keyTextAccumulator == nil {
+                    syncPreedit(clearIfNeeded: false)
+                }
+                postAccessibilityTextNotifications(selectionChanged: true)
+                refreshSystemTextInsertionIndicator()
+                return
+            }
+
+            let insertionRange = accessibilityInsertionRange()
+            if adjustedRange.length == 0 && abs(adjustedRange.location - insertionRange.location) <= 1 {
+                tracePromptAccessibility(
+                    "setSelectedTextRange accepted reason=insertionAdjacentNoOp insertionRange=\(NSStringFromRange(insertionRange))"
+                )
+                refreshSystemTextInsertionIndicator()
+                return
+            }
+
+            tracePromptAccessibility(
+                "setSelectedTextRange ignored reason=noWritablePromptState insertionRange=\(NSStringFromRange(insertionRange))"
+            )
+        }
+
+        func setPromptAccessibilitySelectedTextRanges(_ ranges: [NSValue]?) {
+            guard let range = ranges?.first?.rangeValue else {
+                tracePromptAccessibility("setSelectedTextRanges ignored reason=empty")
+                return
+            }
+
+            setPromptAccessibilitySelectedTextRange(range)
+        }
+
+        func promptAccessibilitySharedCharacterRange() -> NSRange {
+            NSRange(location: 0, length: promptAccessibilityNumberOfCharacters())
+        }
+
         func promptAccessibilityVisibleCharacterRange() -> NSRange {
             accessibilityVisibleCharacterRange()
         }
@@ -815,6 +884,22 @@ extension Ghostty {
 
         func promptAccessibilityInsertionPointLineNumber() -> Int {
             accessibilityLine(for: accessibilityInsertionRange().location)
+        }
+
+        func promptAccessibilityPlaceholderValue() -> String? {
+            "Command input"
+        }
+
+        func promptAccessibilityString(for range: NSRange) -> String? {
+            accessibilityString(for: range)
+        }
+
+        func promptAccessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+            accessibilityAttributedString(for: range)
+        }
+
+        func promptAccessibilityFrame(for range: NSRange) -> NSRect {
+            firstRect(forCharacterRange: range, actualRange: nil)
         }
 
         private func updateSystemTextInsertionIndicator() {
@@ -2845,14 +2930,13 @@ extension Ghostty.SurfaceView {
      }
 
     override func isAccessibilityEnabled() -> Bool {
+        if focusedPromptAccessibilityElement() != nil {
+            return false
+        }
+
         let enabled = focused && window?.firstResponder === self
             ? true
             : super.isAccessibilityEnabled()
-        if NSApp.isFullKeyboardAccessEnabled {
-            traceInput(
-                "isAccessibilityEnabled result=\(enabled) focused=\(focused) windowFirstResponderMatches=\(window?.firstResponder === self)"
-            )
-        }
         return enabled
     }
 
@@ -2870,34 +2954,25 @@ extension Ghostty.SurfaceView {
 
     override func accessibilitySharedFocusElements() -> [Any]? {
         if let promptElement = focusedPromptAccessibilityElement() {
-            traceInput("accessibilitySharedFocusElements count=1 override=prompt")
             return [promptElement]
         }
         let shared = super.accessibilitySharedFocusElements()
-        if let shared, !shared.isEmpty {
-            traceInput("accessibilitySharedFocusElements count=\(shared.count)")
-        }
         return shared
     }
 
     override var accessibilityFocusedUIElement: Any? {
         if let promptElement = focusedPromptAccessibilityElement() {
-            traceInput("accessibilityFocusedUIElement result=prompt")
             return promptElement
         }
 
-        let focusedElement = super.accessibilityFocusedUIElement
-        if NSApp.isFullKeyboardAccessEnabled, let focusedElement {
-            traceInput("accessibilityFocusedUIElement result=\(String(describing: type(of: focusedElement as AnyObject)))")
-        }
-        return focusedElement
+        return super.accessibilityFocusedUIElement
     }
 
-    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
-        if selector == #selector(accessibilityPerformPress) ||
-            selector == #selector(accessibilityPerformPick) {
-            traceInput(
-                "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=false override=terminalSurface"
+        override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+            if selector == #selector(accessibilityPerformPress) ||
+                selector == #selector(accessibilityPerformPick) {
+                traceInput(
+                    "isAccessibilitySelectorAllowed selector=\(NSStringFromSelector(selector)) allowed=false override=terminalSurface"
             )
             return false
         }
@@ -2913,23 +2988,9 @@ extension Ghostty.SurfaceView {
 
     override func accessibilityChildren() -> [Any]? {
         if let promptElement = focusedPromptAccessibilityElement() {
-            traceInput("accessibilityChildren count=1 override=prompt")
             return [promptElement]
         }
-        let children = super.accessibilityChildren()
-        if NSApp.isFullKeyboardAccessEnabled {
-            traceInput("accessibilityChildren count=\(children?.count ?? 0)")
-        }
-        return children
-    }
-
-    override func accessibilityParent() -> Any? {
-        let parent = super.accessibilityParent()
-        if NSApp.isFullKeyboardAccessEnabled {
-            let description = parent.map { String(describing: type(of: $0 as AnyObject)) } ?? "nil"
-            traceInput("accessibilityParent result=\(description)")
-        }
-        return parent
+        return super.accessibilityChildren()
     }
 
     /// Defines the accessibility role for this view, which helps assistive technologies
@@ -2937,11 +2998,7 @@ extension Ghostty.SurfaceView {
     override func accessibilityRole() -> NSAccessibility.Role? {
         /// We keep the surface itself as a text area and vend a focused child text field
         /// for the live editable prompt target when Full Keyboard Access is active.
-        let role: NSAccessibility.Role = .textArea
-        if NSApp.isFullKeyboardAccessEnabled {
-            traceInput("accessibilityRole result=\(role.rawValue)")
-        }
-        return role
+        .textArea
     }
 
     override func accessibilityHelp() -> String? {
