@@ -338,6 +338,9 @@ pub const Action = union(Key) {
     /// The readonly state of the surface has changed.
     readonly: Readonly,
 
+    /// The effective terminal selection has changed.
+    selection_changed,
+
     /// Copy the effective title of the surface to the clipboard.
     /// The effective title is the user-overridden title if set,
     /// otherwise the terminal-set title.
@@ -409,6 +412,7 @@ pub const Action = union(Key) {
         search_total,
         search_selected,
         readonly,
+        selection_changed,
         copy_title_to_clipboard,
 
         test "ghostty.h Action.Key" {

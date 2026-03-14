@@ -372,6 +372,9 @@ extension Notification.Name {
     static let ghosttyDidUpdateScrollbar = Notification.Name("com.mitchellh.ghostty.didUpdateScrollbar")
     static let ScrollbarKey = ghosttyDidUpdateScrollbar.rawValue + ".scrollbar"
 
+    /// Notification sent when the terminal selection changes
+    static let ghosttyDidChangeSelection = Notification.Name("com.mitchellh.ghostty.didChangeSelection")
+
     /// Focus the search field
     static let ghosttySearchFocus = Notification.Name("com.mitchellh.ghostty.searchFocus")
 }

@@ -385,6 +385,11 @@ extension Ghostty {
                 selector: #selector(ghosttyDidUpdateScrollbar(_:)),
                 name: .ghosttyDidUpdateScrollbar,
                 object: self)
+            center.addObserver(
+                self,
+                selector: #selector(ghosttyDidChangeSelection(_:)),
+                name: .ghosttyDidChangeSelection,
+                object: self)
 
             // Listen for local events that we need to know of outside of
             // single surface handlers.
@@ -1115,6 +1120,13 @@ extension Ghostty {
             DispatchQueue.main.async { [weak self] in
                 self?.updateSystemTextInsertionIndicator()
                 self?.postAccessibilityLayoutChanged()
+            }
+        }
+
+        @objc private func ghosttyDidChangeSelection(_ notification: SwiftUI.Notification) {
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshSystemTextInsertionIndicator()
+                self?.postAccessibilityTextNotifications(selectionChanged: true)
             }
         }
 

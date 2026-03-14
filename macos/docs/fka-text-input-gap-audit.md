@@ -296,10 +296,10 @@ relevant notifications when their accessible state changes.
   - if fuller coverage is required, add a dedicated core-to-host selection-change action
     rather than trying to infer it indirectly from unrelated UI state
 
-## Draft Embedding Action
+## Embedded Selection Action
 
-If we want fuller and more truthful selection notification coverage, the smallest reasonable
-embedding-layer addition looks like this:
+This branch now wires the smallest reasonable embedding-layer addition for fuller and more
+truthful selection notification coverage:
 
 - add a surface-scoped `selection_changed` apprt action with no payload
 - emit it only when the effective terminal selection actually changes
@@ -321,23 +321,23 @@ selection state through existing exported APIs like `ghostty_surface_has_selecti
   a real selection-change signal.
 - A no-payload action avoids inventing a bigger ABI surface than we need.
 
-### Minimum implementation sketch
+### Current implementation shape
 
-At the embedding contract level:
+- At the embedding contract level:
 
-- add `selection_changed` to the apprt action enum in `src/apprt/action.zig`
-- add `GHOSTTY_ACTION_SELECTION_CHANGED` to `include/ghostty.h`
-- handle it in the macOS `Ghostty.App` bridge and fan it out as a
+- `selection_changed` is added to the apprt action enum in `src/apprt/action.zig`
+- `GHOSTTY_ACTION_SELECTION_CHANGED` is added to `include/ghostty.h`
+- the macOS `Ghostty.App` bridge handles it and fans it out as a
   `ghosttyDidChangeSelection` notification for the target surface
 
-At the core surface level:
+- At the core surface level:
 
 - emit the action from the existing selection mutation sites, especially the common helper
   paths and the remaining direct `screen.select(...)` call sites used for mouse and drag
   selection
 - only emit when the selection actually changed, to avoid notification spam
 
-At the macOS host level:
+- At the macOS host level:
 
 - observe `ghosttyDidChangeSelection` in `SurfaceView`
 - call the existing accessibility/text-input notification helpers instead of inventing a

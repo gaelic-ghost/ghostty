@@ -2310,6 +2310,7 @@ fn copySelectionToClipboards(
 fn setSelection(self: *Surface, sel_: ?terminal.Selection) !void {
     const prev_ = self.io.terminal.screens.active.selection;
     try self.io.terminal.screens.active.select(sel_);
+    try self.notifySelectionChangedIfNeeded(prev_, sel_);
 
     // If copy on select is false then exit early.
     if (self.config.copy_on_select == .false) return;
@@ -2344,6 +2345,34 @@ fn setSelection(self: *Surface, sel_: ?terminal.Selection) !void {
             );
         },
     }
+}
+
+fn setSelectionWithoutClipboard(self: *Surface, sel_: ?terminal.Selection) !void {
+    const prev_ = self.io.terminal.screens.active.selection;
+    try self.io.terminal.screens.active.select(sel_);
+    try self.notifySelectionChangedIfNeeded(prev_, sel_);
+}
+
+fn notifySelectionChangedIfNeeded(
+    self: *Surface,
+    prev_: ?terminal.Selection,
+    next_: ?terminal.Selection,
+) !void {
+    const changed = changed: {
+        if (prev_) |prev| {
+            if (next_) |next| break :changed !next.eql(prev);
+            break :changed true;
+        }
+
+        break :changed next_ != null;
+    };
+    if (!changed) return;
+
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .selection_changed,
+        {},
+    );
 }
 
 /// Change the cell size for the terminal grid. This can happen as
@@ -4105,7 +4134,7 @@ pub fn mouseButtonCallback(
             1 => {
                 // If we have a selection, clear it. This always happens.
                 if (self.io.terminal.screens.active.selection != null) {
-                    try self.io.terminal.screens.active.select(null);
+                    try self.setSelectionWithoutClipboard(null);
                     try self.queueRender();
                 }
             },
@@ -4129,7 +4158,7 @@ pub fn mouseButtonCallback(
                     break :sel self.io.terminal.screens.active.selectWord(pin.*, self.config.selection_word_chars);
                 };
                 if (sel_) |sel| {
-                    try self.io.terminal.screens.active.select(sel);
+                    try self.setSelectionWithoutClipboard(sel);
                     try self.queueRender();
                 }
             },
@@ -4141,7 +4170,7 @@ pub fn mouseButtonCallback(
                 else
                     self.io.terminal.screens.active.selectLine(.{ .pin = pin.* });
                 if (sel_) |sel| {
-                    try self.io.terminal.screens.active.select(sel);
+                    try self.setSelectionWithoutClipboard(sel);
                     try self.queueRender();
                 }
             },
@@ -4595,7 +4624,7 @@ pub fn mousePressureCallback(
             pin.*,
             self.config.selection_word_chars,
         ) orelse break :select;
-        try self.io.terminal.screens.active.select(sel);
+        try self.setSelectionWithoutClipboard(sel);
         try self.queueRender();
     }
 }
@@ -4839,13 +4868,13 @@ fn dragLeftClickDouble(
     // If our current mouse position is before the starting position,
     // then the selection start is the word nearest our current position.
     if (drag_pin.before(click_pin)) {
-        try self.io.terminal.screens.active.select(.init(
+        try self.setSelectionWithoutClipboard(.init(
             word_current.start(),
             word_start.end(),
             false,
         ));
     } else {
-        try self.io.terminal.screens.active.select(.init(
+        try self.setSelectionWithoutClipboard(.init(
             word_start.start(),
             word_current.end(),
             false,
@@ -4877,7 +4906,7 @@ fn dragLeftClickTriple(
     } else {
         sel.endPtr().* = line.end();
     }
-    try self.io.terminal.screens.active.select(sel);
+    try self.setSelectionWithoutClipboard(sel);
 }
 
 fn dragLeftClickSingle(
@@ -4886,7 +4915,7 @@ fn dragLeftClickSingle(
     drag_x: f64,
 ) !void {
     // This logic is in a separate function so that it can be unit tested.
-    try self.io.terminal.screens.active.select(mouseSelection(
+    try self.setSelectionWithoutClipboard(mouseSelection(
         self.mouse.left_click_pin.?.*,
         drag_pin,
         @intFromFloat(@max(0.0, self.mouse.left_click_xpos)),

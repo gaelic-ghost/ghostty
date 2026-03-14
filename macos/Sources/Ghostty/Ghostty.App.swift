@@ -623,6 +623,9 @@ extension Ghostty {
             case GHOSTTY_ACTION_READONLY:
                 setReadonly(app, target: target, v: action.action.readonly)
 
+            case GHOSTTY_ACTION_SELECTION_CHANGED:
+                selectionChanged(app, target: target)
+
             case GHOSTTY_ACTION_CHECK_FOR_UPDATES:
                 checkForUpdates(app)
 
@@ -2019,6 +2022,29 @@ extension Ghostty {
                     userInfo: [
                         SwiftUI.Notification.Name.ScrollbarKey: scrollbar
                     ]
+                )
+
+            default:
+                assertionFailure()
+            }
+        }
+
+        private static func selectionChanged(
+            _ app: ghostty_app_t,
+            target: ghostty_target_s
+        ) {
+            switch target.tag {
+            case GHOSTTY_TARGET_APP:
+                Ghostty.logger.warning("selection changed does nothing with an app target")
+                return
+
+            case GHOSTTY_TARGET_SURFACE:
+                guard let surface = target.target.surface else { return }
+                guard let surfaceView = self.surfaceView(from: surface) else { return }
+
+                NotificationCenter.default.post(
+                    name: .ghosttyDidChangeSelection,
+                    object: surfaceView
                 )
 
             default:
