@@ -720,6 +720,18 @@ extension Ghostty {
             )
         }
 
+        private func postSelectionChangedIfNeeded(
+            from previousSelection: NSRange
+        ) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let currentSelection = self.selectedRange()
+                if previousSelection != currentSelection {
+                    self.postAccessibilityTextNotifications(selectionChanged: true)
+                }
+            }
+        }
+
         @available(macOS 14.0, *)
         private func ensureTextInsertionIndicator() -> NSTextInsertionIndicator {
             if let indicator = textInsertionIndicatorView as? NSTextInsertionIndicator {
@@ -1900,10 +1912,14 @@ extension Ghostty {
 
         @IBAction override func selectAll(_ sender: Any?) {
             guard let surface = self.surface else { return }
+            let selectionBeforeAction = selectedRange()
             let action = "select_all"
             if !ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8))) {
                 AppDelegate.logger.warning("action failed action=\(action)")
+                return
             }
+
+            postSelectionChangedIfNeeded(from: selectionBeforeAction)
         }
 
         @IBAction func find(_ sender: Any?) {

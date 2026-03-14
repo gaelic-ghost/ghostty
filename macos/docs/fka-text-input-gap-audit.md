@@ -94,6 +94,9 @@ The first contained contract-repair pass now does the following:
   `textInputMarkingSessionEnded`, so AppKit gets the documented marking-session lifecycle
 - viewport and geometry changes now post `layoutChanged` with the terminal surface in the
   `uiElements` payload when the surface size changes or Ghostty publishes scrollbar updates
+- host-owned selection actions now post `selectedTextChanged` when `select_all` actually
+  changes the terminal selection, so the most obvious AppKit-initiated selection path is
+  no longer silent
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -229,7 +232,8 @@ relevant notifications when their accessible state changes.
   still downstream of Ghostty's existing wakeup/tick plumbing rather than a dedicated
   explicit "cursor moved" callback from core
 - accessibility notifications are improved, but output-driven text-value changes and some
-  non-mouse selection changes still lack explicit notification coverage
+  non-mouse selection changes still lack explicit notification coverage, especially
+  core-driven selection changes that do not pass through host-owned actions
 
 ## Audit Checklist
 
