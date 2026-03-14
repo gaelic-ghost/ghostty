@@ -104,6 +104,19 @@ The first contained contract-repair pass now does the following:
   `setAccessibilitySelectedTextRange(_:)` and `setAccessibilitySelectedTextRanges(_:)`, and
   maps those setters onto Ghostty's real writable local state only: active marked-text
   selection, plus a narrow insertion-adjacent no-op path when there is no marked text
+- prompt-local accessibility state is now refreshed through one shared host-side path,
+  instead of ad hoc invalidation sprinkled across focus, size, selection, scrollbar, and
+  tick hooks; the same refresh path now feeds the FKA tick update, prompt snapshot cache,
+  and system insertion indicator refresh
+- the focused prompt child now answers the straightforward single-line text-element queries
+  AppKit expects for a text field, including line/range/style-range lookups and point-to-
+  range mapping, all delegated back to Ghostty's prompt-local snapshot rather than to a
+  second text model
+- prompt-row fallback no longer starts blindly at column `0`; it now prefers the first
+  non-prompt, non-whitespace text cell on the row before falling back further, which
+  reduces left-shifted prompt targeting when semantic input tagging is absent
+- prompt-local frame geometry now uses the prompt-local viewport origin from the embedded
+  text API instead of deriving every focused-child frame from the IME cursor rect alone
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -241,6 +254,9 @@ relevant notifications when their accessible state changes.
 - accessibility notifications are improved, but output-driven text-value changes and some
   non-mouse selection changes still lack explicit notification coverage, especially
   core-driven selection changes that do not pass through host-owned actions
+- the focused prompt child still intentionally does not expose `setAccessibilityValue(_:)`
+  or broad writable text replacement semantics, because Ghostty still does not own a
+  truthful prompt-local backing store the way `NSTextView` does
 
 ## Hook Audit Findings
 
@@ -640,3 +656,29 @@ Warning:
 Adding a new accessibility child or another custom layer may be unnecessary and is exactly
 the kind of change that can make this codebase more brittle. It should be treated as the
 highest-risk option, not the default first fix.
+
+## Cleanup Pass Notes
+
+The latest cleanup pass tightened both sides of the text-accessibility contract instead of
+only the focused prompt child.
+
+- The focused prompt path now centralizes prompt snapshot refreshes so prompt text, prompt
+  frame, prompt-local selection, insertion indicator updates, and related AX notifications
+  all run through one refresh path instead of a loose mix of ad hoc invalidations.
+- The prompt child now answers more of the single-line text-element surface directly through
+  `SurfaceView`, including line/range/style-range/point-to-range queries, so AppKit is not
+  reading a richer text surface from the child than from the parent.
+- The prompt-row fallback in the embedded API now starts from the first meaningful text cell
+  it can find instead of blindly anchoring at column `0`, which makes the fallback less
+  likely to drift left into prompt markers or scrollback gutters when semantic input tagging
+  is missing.
+- The parent `AXTextArea` now also exposes the fuller text-element surface it had been
+  missing: selected text ranges, shared character range, insertion-point line number,
+  index/line/point-to-range mapping, frame-for-range, and shared text UI elements. That
+  keeps the outer text area and the focused prompt child from advertising two very different
+  levels of completeness.
+
+This cleanup pass still intentionally does not expose `setAccessibilityValue(_:)` or broad
+editable backing-store semantics. Ghostty still does not honestly own a normal writable text
+document the way `NSTextView` does, so pretending otherwise would be a worse mismatch than
+leaving that setter unavailable.

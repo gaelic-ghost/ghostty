@@ -129,7 +129,7 @@ extension Ghostty {
                 surfaceView = nil
             }
             guard let surfaceView else { return }
-            surfaceView.refreshSystemTextInsertionIndicator()
+            surfaceView.refreshPromptAccessibilityState()
 #endif
         }
 

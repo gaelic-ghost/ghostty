@@ -147,6 +147,48 @@ extension Ghostty {
             return line
         }
 
+        override func accessibilityLine(for index: Int) -> Int {
+            let line = surfaceView?.promptAccessibilityLine(for: index) ?? NSNotFound
+            surfaceView?.tracePromptAccessibility("lineForIndex index=\(index) line=\(line)")
+            return line
+        }
+
+        override func accessibilityRange(for index: Int) -> NSRange {
+            let range = surfaceView?.promptAccessibilityRange(for: index) ??
+                NSRange(location: NSNotFound, length: 0)
+            surfaceView?.tracePromptAccessibility(
+                "rangeForIndex index=\(index) range=\(NSStringFromRange(range))"
+            )
+            return range
+        }
+
+        override func accessibilityStyleRange(for index: Int) -> NSRange {
+            let range = surfaceView?.promptAccessibilityStyleRange(for: index) ??
+                NSRange(location: NSNotFound, length: 0)
+            surfaceView?.tracePromptAccessibility(
+                "styleRangeForIndex index=\(index) range=\(NSStringFromRange(range))"
+            )
+            return range
+        }
+
+        override func accessibilityRange(forLine line: Int) -> NSRange {
+            let range = surfaceView?.promptAccessibilityRange(forLine: line) ??
+                NSRange(location: NSNotFound, length: 0)
+            surfaceView?.tracePromptAccessibility(
+                "rangeForLine line=\(line) range=\(NSStringFromRange(range))"
+            )
+            return range
+        }
+
+        override func accessibilityRange(for point: NSPoint) -> NSRange {
+            let range = surfaceView?.promptAccessibilityRange(forScreenPoint: point) ??
+                NSRange(location: NSNotFound, length: 0)
+            surfaceView?.tracePromptAccessibility(
+                "rangeForPoint point=\(NSStringFromPoint(point)) range=\(NSStringFromRange(range))"
+            )
+            return range
+        }
+
         override func accessibilityPlaceholderValue() -> String? {
             let value = surfaceView?.promptAccessibilityPlaceholderValue()
             surfaceView?.tracePromptAccessibility("placeholderValue=\(value ?? "nil")")
