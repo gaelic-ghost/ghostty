@@ -258,6 +258,60 @@ This is now one of the strongest remaining semantic gaps in the focused-child ex
 
 ### 10e. The fallback now looks more text-like than before
 
+With the richer child text attributes in place, the observed failure changed again:
+
+- the extra visible system cursor can disappear, leaving only Ghostty's rendered cursor
+- the Full Keyboard Access focus indicator is no longer wandering to the middle of the
+  window
+- synthetic activation is still happening, but it is now clearly targeted at the prompt
+  location rather than the old center-window fallback point
+
+This is a meaningful improvement. It suggests AppKit is no longer treating the target as
+just a generic activatable surface.
+
+### 10f. Prompt-local snapshot narrowed the model, but exposed a new empty-text problem
+
+The next experiment replaced the child's text backing model with a prompt-local snapshot
+instead of delegating to the whole cached terminal transcript.
+
+That change did two useful things:
+
+- it removed the obviously wrong "whole terminal buffer as text field value" model
+- it eliminated the earlier double-cursor display, which strongly suggests the system
+  insertion target became more coherent
+
+However, live tracing of the new build showed a new and very specific constraint:
+
+- AppKit still focuses the prompt child as `AXTextField`
+- `setAccessibilitySelectedTextRange:` is still allowed on that child
+- `setAccessibilityValue:` is still not allowed
+- at the moment of the bad `Space` press, AppKit sees the child as empty:
+  - `numberOfCharacters=0`
+  - `valueLength=0`
+  - `selectedTextRange={0, 0}`
+
+That explains why the visible behavior improved without fixing text insertion. Ghostty is
+now presenting a more prompt-shaped accessibility target, but that target can still collapse
+to an empty writable field. In that state, AppKit still has no real text value to insert
+into and continues to fall back to synthetic activation.
+
+### 10g. The next boundary is prompt-local text extraction, not more event plumbing
+
+This latest prompt-local trace is important because it changes the remaining problem shape.
+The main issue no longer looks like "AppKit cannot find the prompt target" or "AppKit is
+still focusing the whole terminal surface."
+
+The stronger current hypothesis is:
+
+- the prompt child is now in roughly the right place semantically
+- but the prompt-local snapshot is too narrow or too dependent on semantic `.input` cells
+- in ordinary prompt states, Ghostty can still expose the child as an empty text field
+
+That means the next best step is to make prompt-local extraction more resilient, while still
+keeping the child prompt-local rather than falling back to whole-transcript coordinates.
+The most promising direction is a best-effort editable-line snapshot from the cursor row
+even when semantic prompt tagging is absent or incomplete.
+
 The newest user-visible symptom is no longer just a synthetic click:
 
 - the system insertion cursor can appear at the prompt target instead of only the old

@@ -304,6 +304,47 @@ That setter experiment is now in place. It deliberately stays narrow:
 does not own an honest prompt-local backing string and Ghostty still should not pretend that
 the entire terminal transcript is a writable text field value.
 
+### Prompt-local snapshot follow-up
+
+The prompt child no longer delegates to the whole terminal transcript. It now uses a
+prompt-local snapshot backed by a new embedder API that reads prompt-local input from the
+active cursor row.
+
+That was the right semantic direction, and it improved real behavior:
+
+- the extra visible AppKit insertion cursor can disappear
+- the child is more clearly anchored to the prompt location
+- the activation target is no longer the old center-window fallback point
+
+But the latest trace also showed the current prompt-local extractor is still too brittle.
+At the moment of the failing Full Keyboard Access `Space` press, AppKit saw the focused
+prompt child as:
+
+- `numberOfCharacters=0`
+- `valueLength=0`
+- `selectedTextRange={0, 0}`
+
+So the child is now prompt-local, but it can still collapse to an empty text field. That
+means AppKit still has no real writable value to insert into, which is a much better
+explanation for the remaining synthetic activation fallback than any missing event hook.
+
+### Implication for remaining gaps
+
+This latest result also sharpens some of the earlier "missing hook" questions.
+
+The investigation now suggests that several looser gaps from earlier are likely secondary:
+
+- broader accessibility notifications matter, but they will not help much if the focused
+  prompt target still looks empty at insertion time
+- writable setters matter, but `setAccessibilityValue(_:)` still should not be exposed
+  until the prompt child has a truthful prompt-local backing string
+- cursor geometry still matters, but it is now clearly downstream of the same prompt-local
+  extraction problem
+
+So the next grounded target is not more event tracing. It is a more resilient prompt-local
+text extractor that can derive the live editable line from the cursor row even when semantic
+`.input` tagging is absent or incomplete.
+
 ### Hooks that looked promising but are mostly UI-only
 
 - `start_search`, `end_search`, `search_total`, and `search_selected` are real core actions,
