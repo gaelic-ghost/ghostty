@@ -1620,6 +1620,98 @@ pub const CAPI = struct {
         return readTextLocked(surface, core_sel, result);
     }
 
+    /// Read the current prompt-local input text on the active cursor row.
+    ///
+    /// This is a best-effort semantic prompt snapshot intended for host-side
+    /// accessibility and text input integration. It intentionally describes
+    /// only the current input region rather than the whole terminal transcript.
+    export fn ghostty_surface_read_prompt_input(
+        surface: *Surface,
+        result: *Text,
+    ) bool {
+        const core_surface = &surface.core_surface;
+        core_surface.renderer_state.mutex.lock();
+        defer core_surface.renderer_state.mutex.unlock();
+
+        const screen = core_surface.io.terminal.screens.active;
+        if (!core_surface.io.terminal.cursorIsAtPrompt()) return false;
+
+        const cursor_pin = screen.cursor.page_pin.*;
+        const rac = cursor_pin.rowAndCell();
+        const cells = cursor_pin.node.data.getCells(rac.row);
+
+        var input_start_x: ?terminal.size.CellCountInt = null;
+        var input_end_x: terminal.size.CellCountInt = 0;
+        for (cells, 0..) |cell, x| {
+            if (cell.semantic_content == .input) {
+                if (input_start_x == null) input_start_x = @intCast(x);
+                input_end_x = @intCast(x + 1);
+            }
+        }
+
+        const origin_x = input_start_x orelse cursor_pin.x;
+        const cursor_col_cells = cursor_pin.x -| origin_x;
+
+        if (input_start_x == null or input_end_x <= origin_x) {
+            const empty = global.alloc.allocSentinel(u8, 0, 0) catch |err| {
+                log.warn("error allocating prompt input text err={}", .{err});
+                return false;
+            };
+
+            result.* = .{
+                .tl_px_x = -1,
+                .tl_px_y = -1,
+                .offset_start = @intCast(cursor_col_cells),
+                .offset_len = 0,
+                .text = empty.ptr,
+                .text_len = 0,
+            };
+            return true;
+        }
+
+        var start_pin = cursor_pin;
+        start_pin.x = origin_x;
+        var end_pin = cursor_pin;
+        end_pin.x = input_end_x - 1;
+        const input_sel = terminal.Selection.init(start_pin, end_pin, false);
+        const input_text = core_surface.dumpTextLocked(global.alloc, input_sel) catch |err| {
+            log.warn("error reading prompt input text err={}", .{err});
+            return false;
+        };
+
+        const cursor_offset_chars: usize = cursor_offset: {
+            if (cursor_pin.x <= origin_x) break :cursor_offset 0;
+
+            var cursor_end_pin = cursor_pin;
+            cursor_end_pin.x = @min(cursor_pin.x, input_end_x) - 1;
+            const cursor_sel = terminal.Selection.init(start_pin, cursor_end_pin, false);
+            const cursor_text = core_surface.dumpTextLocked(global.alloc, cursor_sel) catch |err| {
+                log.warn("error reading prompt cursor text err={}", .{err});
+                break :cursor_offset cursor_col_cells;
+            };
+            defer global.alloc.free(cursor_text.text);
+            break :cursor_offset cursor_text.text.len;
+        };
+
+        const vp: CoreSurface.Text.Viewport = input_text.viewport orelse .{
+            .tl_px_x = -1,
+            .tl_px_y = -1,
+            .offset_start = 0,
+            .offset_len = 0,
+        };
+
+        result.* = .{
+            .tl_px_x = vp.tl_px_x,
+            .tl_px_y = vp.tl_px_y,
+            .offset_start = @intCast(cursor_offset_chars),
+            .offset_len = 0,
+            .text = input_text.text.ptr,
+            .text_len = input_text.text.len,
+        };
+
+        return true;
+    }
+
     /// Read some arbitrary text from the surface.
     ///
     /// This is an expensive operation so it shouldn't be called too

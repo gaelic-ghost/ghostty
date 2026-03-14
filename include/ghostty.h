@@ -1128,6 +1128,7 @@ void ghostty_surface_complete_clipboard_request(ghostty_surface_t,
                                                 bool);
 bool ghostty_surface_has_selection(ghostty_surface_t);
 bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_s*);
+bool ghostty_surface_read_prompt_input(ghostty_surface_t, ghostty_text_s*);
 bool ghostty_surface_read_text(ghostty_surface_t,
                                ghostty_selection_s,
                                ghostty_text_s*);
