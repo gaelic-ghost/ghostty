@@ -185,6 +185,22 @@ This is one of the strongest remaining signals in the investigation. The termina
 is still being exposed as one opaque focused element with no inner editable child target
 for the live prompt or insertion point.
 
+### 10a. Next focused-child experiment
+
+Apple's AppKit accessibility guidance points toward a focused child element when a custom
+`NSView` contains a more specific inner target than the whole surface. The next experiment
+therefore shifts from single-element flag tuning to a minimal accessibility child for the
+live editable prompt target.
+
+This needs extra caution because new layers are often unnecessary and easy to get wrong.
+The intended shape is deliberately small:
+
+- keep `SurfaceView` as the owning text surface
+- keep the surface role as `AXTextArea`
+- vend one tiny `NSAccessibilityElement` child with `AXTextField` semantics only while
+  Full Keyboard Access is active and the surface is the first responder
+- route app-level focused-element lookups back to the owning `SurfaceView` when needed
+
 ### 11. Ghostty's local left-mouse focus monitor is not consuming the failing path
 
 Ghostty installs a local monitor on the terminal surface for `leftMouseDown` so it can

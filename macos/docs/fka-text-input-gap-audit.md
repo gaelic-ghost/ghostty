@@ -343,6 +343,28 @@ selection state through existing exported APIs like `ghostty_surface_has_selecti
 - call the existing accessibility/text-input notification helpers instead of inventing a
   second selection-notification path
 
+## Focused Child Experiment
+
+With the host-side notification and text-input contract repairs in place, the main Full
+Keyboard Access failure still remained: Space continued to arrive as synthetic center-click
+ activation instead of text input, and the AX hierarchy was still flat.
+
+The next experiment is intentionally narrow because new layers are often unnecessary and
+easy to get wrong:
+
+- keep `SurfaceView` as the owning text surface and `AXTextArea`
+- vend a tiny `TerminalPromptAccessibilityElement` child with `AXTextField` role only
+  while Full Keyboard Access is active and `SurfaceView` is the first responder
+- expose that child via `accessibilityChildren`, `accessibilityFocusedUIElement`, and
+  `accessibilitySharedFocusElements`
+- mirror selection, value, and layout notifications to the child while it is active
+- update `Ghostty.App.appTick()` so app-level focused-element lookups can resolve from the
+  child back to the parent `SurfaceView`
+
+This deliberately avoids inventing a second text model. The child delegates text semantics
+back to `SurfaceView` and exists only to give AppKit a more specific focused editable
+target than the whole terminal surface.
+
 ## Audit Checklist
 
 ### 1. `NSTextInputClient` required and placement behavior

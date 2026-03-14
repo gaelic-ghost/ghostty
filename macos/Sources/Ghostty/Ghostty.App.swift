@@ -119,7 +119,16 @@ extension Ghostty {
 
 #if os(macOS)
             guard NSApp.isFullKeyboardAccessEnabled else { return }
-            guard let surfaceView = NSApp.accessibilityApplicationFocusedUIElement() as? Ghostty.SurfaceView else { return }
+            guard let focusedElement = NSApp.accessibilityApplicationFocusedUIElement() else { return }
+            let surfaceView: Ghostty.SurfaceView?
+            if let focusedSurface = focusedElement as? Ghostty.SurfaceView {
+                surfaceView = focusedSurface
+            } else if let focusedElement = focusedElement as? NSAccessibilityElementProtocol {
+                surfaceView = focusedElement.accessibilityParent() as? Ghostty.SurfaceView
+            } else {
+                surfaceView = nil
+            }
+            guard let surfaceView else { return }
             surfaceView.refreshSystemTextInsertionIndicator()
 #endif
         }
