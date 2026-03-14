@@ -613,3 +613,23 @@ The strongest current theory is now narrower:
 This is a good checkpoint for switching from broad experimentation back to a stricter audit
 of which AppKit/NSAccessibility expectations Ghostty now satisfies cleanly, which ones are
 still partial, and which ones are likely still sending mixed signals.
+
+## Practical Pause Point
+
+This investigation reached a useful stopping point even though it did not produce a final
+ behavior change.
+
+- The branch now contains a substantial head start for any future work: cleaner
+  `NSTextInputClient` semantics, stronger accessibility notifications, insertion-indicator
+  integration, prompt-local probing, richer tracing, and a documented comparison between the
+  parent-only and focused-child accessibility models.
+- The remaining failure no longer looks like a single missing method or notification. It now
+  looks architectural: Ghostty's macOS host still does not own a stable, truthful editable
+  prompt model in the same way AppKit expects from a text control, and Full Keyboard Access
+  continues to prefer activation semantics over insertion semantics.
+- That means a future fix attempt is more likely to require larger design work, probably at
+  the boundary between the macOS host and Ghostty core, rather than another isolated
+  override in `SurfaceView`.
+
+For now, this branch is best treated as a documented investigation checkpoint rather than an
+almost-finished fix.

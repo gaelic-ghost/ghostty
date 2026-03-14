@@ -831,3 +831,20 @@ The remaining likely causes are tighter and more coupled:
 That is why the next pass should stay audit-driven and compare Ghostty's current focused
 text surface against AppKit's documented expectations very explicitly, instead of adding
 more speculative layers.
+
+## Pause Recommendation
+
+At this point, continuing to iterate on isolated AppKit overrides without a clearer prompt
+editing model is likely to have sharply diminishing returns.
+
+- The host-side accessibility and `NSTextInputClient` surface is much less incomplete than it
+  was at the start of the investigation.
+- The remaining failure still reproduces across both the single-surface `AXTextArea` model
+  and the focused-child `AXTextField` experiment.
+- That makes it unlikely that one more local accessibility override will suddenly make Full
+  Keyboard Access trust Ghostty as a text field.
+
+If this work resumes later, the most promising direction is probably not another narrow host
+patch, but a clearer contract for prompt-local text, ranges, geometry, and mutability at the
+ host/core boundary so the macOS layer can expose a focused editable target that is not
+ reconstructed heuristically after the fact.
