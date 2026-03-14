@@ -235,6 +235,64 @@ relevant notifications when their accessible state changes.
   non-mouse selection changes still lack explicit notification coverage, especially
   core-driven selection changes that do not pass through host-owned actions
 
+## Hook Audit Findings
+
+### What the host already exposes cleanly
+
+- `Ghostty.App` is the real core-to-host action bridge. Search, readonly, scrollbar, title,
+  pwd, bell, config, color, and other semantic surface updates all land there before they
+  fan out into Swift-side notifications or direct state updates.
+- `SurfaceView` owns the only host-side text and accessibility contract that matters for this
+  bug. The surrounding `Features/` and `Helpers/` code mostly deals with windows, overlays,
+  split management, and focus routing, not editable text semantics.
+- `BaseTerminalController` is a useful observer for focus and aggregate window state, but its
+  published values and notification handlers are mostly about window title, bell state, split
+  focus, and UI containment. They are not hidden text-model hooks.
+
+### Hooks that looked promising but are mostly UI-only
+
+- `start_search`, `end_search`, `search_total`, and `search_selected` are real core actions,
+  but on macOS they only mutate `SurfaceView.searchState` and the search overlay state. They
+  do not represent terminal selection changes.
+- `SurfaceView.searchState` has a meaningful `didSet`, but it only bridges the overlay's
+  needle changes back into `ghostty_surface_binding_action("search:...")` and `"end_search"`.
+  It is useful for the search UI, not for accessibility selection notifications.
+- `selectionForFind` and `scrollToSelection` are host-owned menu actions, but they do not
+  directly mutate the terminal selection in a way the host can verify as cleanly as
+  `select_all`. `scroll_to_selection` is primarily viewport movement, and that is already
+  better represented by the existing scrollbar and `layoutChanged` path.
+
+### The key missing hook: core selection changes do not have an apprt action
+
+- The Zig core clearly has many internal selection mutations. `Surface.setSelection(...)`,
+  left-drag selection finalization, link selection, prompt-click handling, mouse-reporting
+  selection clears, and other paths in `../src/Surface.zig` all change the terminal
+  selection.
+- But the apprt action enum in `../src/apprt/action.zig` has no dedicated
+  `selection_changed`-style action. The macOS host receives actions for search totals,
+  selected search match index, scrollbar, readonly, title, pwd, and similar surface state,
+  but not for ordinary terminal selection changes.
+- That means the remaining accessibility notification gap is not just a missing Swift hook.
+  The host simply is not told when core selection changes happen outside the local paths we
+  already observe, such as:
+  - completed left-mouse gestures in `SurfaceView`
+  - marked-text and committed-text input paths
+  - explicit host-owned actions like `select_all`
+
+### Consequences for the remaining notification work
+
+- Search-result updates are not a substitute for text selection notifications. The core emits
+  `search_selected`, but that is only the selected search match index for the overlay and
+  renderer highlight state.
+- Window- and controller-level hooks in `Features/Terminal` are not the right place to
+  fabricate text notifications. They know about focus and layout, but not about the terminal
+  document state with enough fidelity to stay truthful.
+- The remaining realistic notification work is therefore split in two:
+  - continue improving low-risk host-owned paths where the selection change is directly
+    observable
+  - if fuller coverage is required, add a dedicated core-to-host selection-change action
+    rather than trying to infer it indirectly from unrelated UI state
+
 ## Audit Checklist
 
 ### 1. `NSTextInputClient` required and placement behavior
