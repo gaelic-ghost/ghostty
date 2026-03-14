@@ -1880,10 +1880,14 @@ extension Ghostty {
 
         @IBAction func copy(_ sender: Any?) {
             guard let surface = self.surface else { return }
+            let selectionBeforeAction = selectedRange()
             let action = "copy_to_clipboard"
             if !ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8))) {
                 AppDelegate.logger.warning("action failed action=\(action)")
+                return
             }
+
+            postSelectionChangedIfNeeded(from: selectionBeforeAction)
         }
 
         @IBAction func paste(_ sender: Any?) {

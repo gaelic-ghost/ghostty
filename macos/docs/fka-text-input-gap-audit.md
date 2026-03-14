@@ -97,6 +97,9 @@ The first contained contract-repair pass now does the following:
 - host-owned selection actions now post `selectedTextChanged` when `select_all` actually
   changes the terminal selection, so the most obvious AppKit-initiated selection path is
   no longer silent
+- host-owned `copy(_:)` now also posts `selectedTextChanged` when the core clears selection
+  as part of `selection_clear_on_copy`, so that AppKit is not left with a stale selected-text
+  state after copy-triggered selection clears
 
 These changes keep the existing architecture in place and focus only on documented
 `NSTextInputClient` contract repair.
@@ -292,6 +295,53 @@ relevant notifications when their accessible state changes.
     observable
   - if fuller coverage is required, add a dedicated core-to-host selection-change action
     rather than trying to infer it indirectly from unrelated UI state
+
+## Draft Embedding Action
+
+If we want fuller and more truthful selection notification coverage, the smallest reasonable
+embedding-layer addition looks like this:
+
+- add a surface-scoped `selection_changed` apprt action with no payload
+- emit it only when the effective terminal selection actually changes
+- let the macOS host translate that action into one narrow notification path that:
+  - refreshes the system insertion indicator geometry
+  - posts `selectedTextChanged`
+  - notifies `NSTextInputContext` selection updates
+
+This stays intentionally small. It does not try to expose selection ranges, selection text,
+or a shadow editable document model through the embedding API. The host can already re-read
+selection state through existing exported APIs like `ghostty_surface_has_selection` and
+`ghostty_surface_read_selection` when it truly needs the content.
+
+### Why this shape is safer than inference
+
+- The core already knows exactly when selection changed.
+- The host does not.
+- Existing search, scrollbar, and overlay actions are adjacent state, not a substitute for
+  a real selection-change signal.
+- A no-payload action avoids inventing a bigger ABI surface than we need.
+
+### Minimum implementation sketch
+
+At the embedding contract level:
+
+- add `selection_changed` to the apprt action enum in `src/apprt/action.zig`
+- add `GHOSTTY_ACTION_SELECTION_CHANGED` to `include/ghostty.h`
+- handle it in the macOS `Ghostty.App` bridge and fan it out as a
+  `ghosttyDidChangeSelection` notification for the target surface
+
+At the core surface level:
+
+- emit the action from the existing selection mutation sites, especially the common helper
+  paths and the remaining direct `screen.select(...)` call sites used for mouse and drag
+  selection
+- only emit when the selection actually changed, to avoid notification spam
+
+At the macOS host level:
+
+- observe `ghosttyDidChangeSelection` in `SurfaceView`
+- call the existing accessibility/text-input notification helpers instead of inventing a
+  second selection-notification path
 
 ## Audit Checklist
 
